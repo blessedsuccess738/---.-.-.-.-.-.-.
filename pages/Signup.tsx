@@ -42,8 +42,12 @@ const Signup: React.FC = () => {
       createdAt: new Date().toISOString()
     };
 
-    db.setUsers([...users, newUser]);
-    navigate('/login');
+    const updatedUsers = [...users, newUser];
+    db.setUsers(updatedUsers);
+    
+    // Auto-login after signup to show welcome message
+    db.setCurrentUser(newUser);
+    navigate('/dashboard?new=true');
   };
 
   return (

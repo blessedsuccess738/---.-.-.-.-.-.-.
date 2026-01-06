@@ -16,7 +16,10 @@ const DEFAULT_DEPOSIT_CONFIG: DepositConfig = {
   tokens: [
     { name: 'USDT (TRC-20)', address: 'TX47zQvT9KxL2mR5s8pB2vA9mX8wH6qZ3n' },
     { name: 'USDC (ERC-20)', address: '0x742d35Cc6634C0532925a3b844Bc454e4438f44e' }
-  ]
+  ],
+  telegramSupport: 'https://t.me/SmartMineSupport',
+  telegramChannel: 'https://t.me/SmartMineNews',
+  miningVideoUrl: 'https://www.w3schools.com/html/mov_bbb.mp4' // Placeholder video
 };
 
 export const db = {

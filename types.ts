@@ -66,6 +66,9 @@ export interface TokenAddress {
 export interface DepositConfig {
   mainAddress: string;
   tokens: TokenAddress[];
+  telegramSupport?: string;
+  telegramChannel?: string;
+  miningVideoUrl?: string;
 }
 
 export interface AppStats {
