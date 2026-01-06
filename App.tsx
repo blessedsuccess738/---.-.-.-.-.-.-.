@@ -1,14 +1,14 @@
 
 import React from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { Layout } from './components/Layout';
-import Welcome from './pages/Welcome';
-import Login from './pages/Login';
-import Signup from './pages/Signup';
-import Dashboard from './pages/Dashboard';
-import AdminPanel from './pages/Admin';
-import { db } from './services/db';
-import { UserRole } from './types';
+import { Layout } from './components/Layout.tsx';
+import Welcome from './pages/Welcome.tsx';
+import Login from './pages/Login.tsx';
+import Signup from './pages/Signup.tsx';
+import Dashboard from './pages/Dashboard.tsx';
+import AdminPanel from './pages/Admin.tsx';
+import { db } from './services/db.ts';
+import { UserRole } from './types.ts';
 
 const PrivateRoute: React.FC<{ children: React.ReactElement, adminOnly?: boolean }> = ({ children, adminOnly }) => {
   const user = db.getCurrentUser();
