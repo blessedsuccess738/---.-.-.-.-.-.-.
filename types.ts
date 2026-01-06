@@ -69,6 +69,8 @@ export interface DepositConfig {
   telegramSupport?: string;
   telegramChannel?: string;
   miningVideoUrl?: string;
+  backgroundVideoUrl?: string;
+  withdrawalMaintenance?: boolean;
 }
 
 export interface AppStats {

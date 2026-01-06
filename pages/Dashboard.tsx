@@ -14,9 +14,14 @@ const Dashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'overview' | 'vip' | 'deposit' | 'withdraw' | 'history'>('overview');
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
-  // Broadcast & Config State
+  // Persistent Broadcast dismissal logic
   const [broadcastMsg, setBroadcastMsg] = useState<string | null>(db.getBroadcastMessage());
-  const [isBroadcastDismissed, setIsBroadcastDismissed] = useState(false);
+  const [isBroadcastDismissed, setIsBroadcastDismissed] = useState(() => {
+    const currentMsg = db.getBroadcastMessage();
+    const lastDismissed = localStorage.getItem('sm_dismissed_broadcast');
+    return currentMsg === lastDismissed;
+  });
+
   const [depositConfig, setDepositConfig] = useState(db.getDepositConfig());
 
   // VIP Purchase Modal State
@@ -56,7 +61,14 @@ const Dashboard: React.FC = () => {
       }
       setChatMessages(db.getChats(currentUser.id));
     }
-    setBroadcastMsg(db.getBroadcastMessage());
+    const newBroadcast = db.getBroadcastMessage();
+    setBroadcastMsg(newBroadcast);
+    // If the message has changed and it wasn't the one we dismissed, show it
+    const lastDismissed = localStorage.getItem('sm_dismissed_broadcast');
+    if (newBroadcast !== lastDismissed) {
+      setIsBroadcastDismissed(false);
+    }
+    
     setDepositConfig(db.getDepositConfig());
   }, []);
 
@@ -247,6 +259,7 @@ const Dashboard: React.FC = () => {
 
   const handleWithdraw = (e: React.FormEvent) => {
     e.preventDefault();
+    if (depositConfig.withdrawalMaintenance) return; // Prevention
     const amount = parseFloat(withdrawAmount);
     if (!user || !amount || amount < MIN_WITHDRAWAL) {
       setMessage({ type: 'error', text: `Minimum withdrawal is $${MIN_WITHDRAWAL}` });
@@ -273,41 +286,54 @@ const Dashboard: React.FC = () => {
     setActiveTab('overview');
   };
 
+  const dismissBroadcast = () => {
+    if (broadcastMsg) {
+      localStorage.setItem('sm_dismissed_broadcast', broadcastMsg);
+      setIsBroadcastDismissed(true);
+    }
+  };
+
   const userTransactions = db.getTransactions().filter(t => t.userId === user?.id);
 
   return (
     <div className="space-y-6 relative pb-20">
       {/* Global Broadcast Banner */}
       {broadcastMsg && !isBroadcastDismissed && (
-        <div className="bg-amber-100 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 p-4 rounded-2xl flex items-start shadow-sm transition-all">
+        <div className="bg-amber-100 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 p-4 rounded-2xl flex items-start shadow-sm transition-all animate-in slide-in-from-top duration-300">
           <div className="bg-amber-200 dark:bg-amber-800 text-amber-700 dark:text-amber-400 p-2 rounded-xl mr-4 shrink-0">
             <i className="fa-solid fa-bullhorn"></i>
           </div>
           <div className="flex-1">
             <h4 className="text-[10px] font-black uppercase tracking-widest text-amber-700 dark:text-amber-500 mb-1">Official Announcement</h4>
-            <p className="text-sm font-medium text-amber-900 dark:text-amber-100 leading-relaxed">{broadcastMsg}</p>
+            <p className="text-sm font-medium text-amber-900 dark:text-amber-100 leading-relaxed text-left">{broadcastMsg}</p>
           </div>
-          <button onClick={() => setIsBroadcastDismissed(true)} className="text-amber-500 hover:text-amber-700 p-1"><i className="fa-solid fa-xmark"></i></button>
+          <button 
+            onClick={dismissBroadcast} 
+            className="text-amber-500 hover:text-amber-700 p-2 rounded-lg hover:bg-amber-200/50 transition-colors"
+            title="Dismiss Announcement"
+          >
+            <i className="fa-solid fa-xmark"></i>
+          </button>
         </div>
       )}
 
       {/* User Stats Card */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-        <div className="bg-white dark:bg-gray-900 p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 flex flex-col md:flex-row md:items-center md:space-x-4 transition-all">
+        <div className="bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 flex flex-col md:flex-row md:items-center md:space-x-4 transition-all">
           <div className="bg-blue-100 dark:bg-blue-900/30 p-2 md:p-3 rounded-xl text-blue-600 dark:text-blue-400 w-fit mb-2 md:mb-0"><i className="fa-solid fa-wallet text-lg md:text-xl"></i></div>
-          <div><p className="text-gray-500 dark:text-gray-400 text-[10px] md:text-xs font-bold uppercase tracking-wider">Balance</p><p className="text-xl md:text-2xl font-black text-gray-800 dark:text-white transition-colors">${user?.walletBalance.toFixed(2)}</p></div>
+          <div className="text-left"><p className="text-gray-500 dark:text-gray-400 text-[10px] md:text-xs font-bold uppercase tracking-wider">Balance</p><p className="text-xl md:text-2xl font-black text-gray-800 dark:text-white transition-colors">${user?.walletBalance.toFixed(2)}</p></div>
         </div>
-        <div className="bg-white dark:bg-gray-900 p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 flex flex-col md:flex-row md:items-center md:space-x-4 transition-all">
+        <div className="bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 flex flex-col md:flex-row md:items-center md:space-x-4 transition-all">
           <div className="bg-purple-100 dark:bg-purple-900/30 p-2 md:p-3 rounded-xl text-purple-600 dark:text-purple-400 w-fit mb-2 md:mb-0"><i className="fa-solid fa-crown text-lg md:text-xl"></i></div>
-          <div><p className="text-gray-500 dark:text-gray-400 text-[10px] md:text-xs font-bold uppercase tracking-wider">Active VIP</p><p className="text-xl md:text-2xl font-black text-gray-800 dark:text-white transition-colors">{currentVIP ? currentVIP.name : 'NONE'}</p></div>
+          <div className="text-left"><p className="text-gray-500 dark:text-gray-400 text-[10px] md:text-xs font-bold uppercase tracking-wider">Active VIP</p><p className="text-xl md:text-2xl font-black text-gray-800 dark:text-white transition-colors">{currentVIP ? currentVIP.name : 'NONE'}</p></div>
         </div>
-        <div className="bg-white dark:bg-gray-900 p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 flex flex-col md:flex-row md:items-center md:space-x-4 transition-all">
+        <div className="bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 flex flex-col md:flex-row md:items-center md:space-x-4 transition-all">
           <div className="bg-green-100 dark:bg-green-900/30 p-2 md:p-3 rounded-xl text-green-600 dark:text-green-400 w-fit mb-2 md:mb-0"><i className="fa-solid fa-chart-line text-lg md:text-xl"></i></div>
-          <div><p className="text-gray-500 dark:text-gray-400 text-[10px] md:text-xs font-bold uppercase tracking-wider">Daily Return</p><p className="text-xl md:text-2xl font-black text-gray-800 dark:text-white transition-colors">${currentVIP ? currentVIP.dailyReturn.toFixed(2) : '0.00'}</p></div>
+          <div className="text-left"><p className="text-gray-500 dark:text-gray-400 text-[10px] md:text-xs font-bold uppercase tracking-wider">Daily Return</p><p className="text-xl md:text-2xl font-black text-gray-800 dark:text-white transition-colors">${currentVIP ? currentVIP.dailyReturn.toFixed(2) : '0.00'}</p></div>
         </div>
-        <div className="bg-white dark:bg-gray-900 p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 flex flex-col md:flex-row md:items-center md:space-x-4 transition-all">
+        <div className="bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 flex flex-col md:flex-row md:items-center md:space-x-4 transition-all">
           <div className="bg-orange-100 dark:bg-orange-900/30 p-2 md:p-3 rounded-xl text-orange-600 dark:text-orange-400 w-fit mb-2 md:mb-0"><i className="fa-solid fa-hourglass-half text-lg md:text-xl"></i></div>
-          <div><p className="text-gray-500 dark:text-gray-400 text-[10px] md:text-xs font-bold uppercase tracking-wider">Mining Timer</p><p className="text-xl md:text-2xl font-black text-gray-800 dark:text-white font-mono transition-colors">{timeLeft}</p></div>
+          <div className="text-left"><p className="text-gray-500 dark:text-gray-400 text-[10px] md:text-xs font-bold uppercase tracking-wider">Mining Timer</p><p className="text-xl md:text-2xl font-black text-gray-800 dark:text-white font-mono transition-colors">{timeLeft}</p></div>
         </div>
       </div>
 
@@ -321,8 +347,8 @@ const Dashboard: React.FC = () => {
         >
           <i className="fa-brands fa-telegram text-2xl group-hover:rotate-12 transition-transform"></i>
           <div className="text-left">
-            <p className="text-[10px] font-black uppercase tracking-widest opacity-80">Support</p>
-            <p className="text-lg font-black">Contact Admin via Telegram</p>
+            <p className="text-[10px] font-black uppercase tracking-widest opacity-80 text-white">Support</p>
+            <p className="text-lg font-black text-white">Contact Admin via Telegram</p>
           </div>
         </a>
         <a 
@@ -333,8 +359,8 @@ const Dashboard: React.FC = () => {
         >
           <i className="fa-solid fa-bullhorn text-2xl group-hover:rotate-12 transition-transform"></i>
           <div className="text-left">
-            <p className="text-[10px] font-black uppercase tracking-widest opacity-80">Community</p>
-            <p className="text-lg font-black">Official Telegram Channel</p>
+            <p className="text-[10px] font-black uppercase tracking-widest opacity-80 text-white">Community</p>
+            <p className="text-lg font-black text-white">Official Telegram Channel</p>
           </div>
         </a>
       </div>
@@ -347,10 +373,10 @@ const Dashboard: React.FC = () => {
       )}
 
       {/* Tabs */}
-      <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden transition-colors">
+      <div className="bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden transition-colors">
         <div className="flex border-b border-gray-100 dark:border-gray-800 overflow-x-auto whitespace-nowrap scrollbar-hide bg-gray-50/50 dark:bg-gray-800/20 transition-colors">
           {(['overview', 'vip', 'deposit', 'withdraw', 'history'] as const).map(tab => (
-            <button key={tab} onClick={() => setActiveTab(tab)} className={`px-6 py-4 text-sm font-bold transition-all border-b-2 ${activeTab === tab ? 'text-blue-600 border-blue-600 bg-white dark:bg-gray-900' : 'text-gray-500 border-transparent hover:text-gray-700'}`}>{tab.charAt(0).toUpperCase() + tab.slice(1)}</button>
+            <button key={tab} onClick={() => setActiveTab(tab)} className={`px-6 py-4 text-sm font-bold transition-all border-b-2 ${activeTab === tab ? 'text-blue-600 border-blue-600 bg-white/50 dark:bg-gray-900/50' : 'text-gray-500 border-transparent hover:text-gray-700'}`}>{tab.charAt(0).toUpperCase() + tab.slice(1)}</button>
           ))}
         </div>
 
@@ -359,18 +385,18 @@ const Dashboard: React.FC = () => {
             <div className="space-y-8">
               <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-3xl p-6 md:p-10 text-white relative overflow-hidden shadow-xl shadow-blue-500/20">
                 <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-8">
-                  <div className="max-w-md"><h3 className="text-3xl font-black mb-3 text-white">Mining Terminal</h3><p className="text-blue-100/80 leading-relaxed text-sm md:text-base">Access automated mining cycles. Upgrade VIP for higher hash rates.</p></div>
+                  <div className="max-w-md text-left"><h3 className="text-3xl font-black mb-3 text-white">Mining Terminal</h3><p className="text-blue-100/80 leading-relaxed text-sm md:text-base">Access automated mining cycles. Upgrade VIP for higher hash rates.</p></div>
                   <div className="flex flex-col items-center justify-center p-6 bg-white/10 rounded-3xl backdrop-blur-md border border-white/20 min-w-[240px] shadow-2xl">
                     <span className="text-xs font-black uppercase tracking-[0.2em] mb-3 text-blue-200">Current Progress</span>
                     <span className="text-5xl font-mono font-black mb-6 drop-shadow-md">{timeLeft}</span>
-                    {!user?.miningTimerStart ? <button onClick={handleStartMining} className="w-full py-4 bg-white text-blue-700 font-black rounded-2xl hover:bg-blue-50 transition-all shadow-lg active:scale-95">Start New Cycle</button> : isMiningComplete ? <button onClick={handleClaimMining} className="w-full py-4 bg-green-500 text-white font-black rounded-2xl hover:bg-green-600 transition-all shadow-lg animate-pulse active:scale-95">Claim ${currentVIP?.dailyReturn.toFixed(2)}</button> : <div className="w-full py-4 bg-white/20 text-white font-black rounded-2xl flex items-center justify-center cursor-wait backdrop-blur-sm"><i className="fa-solid fa-gear fa-spin mr-3"></i> Mining...</div>}
+                    {!user?.miningTimerStart ? <button onClick={handleStartMining} className="w-full py-4 bg-white text-blue-700 font-black rounded-2xl hover:bg-blue-50 transition-all shadow-lg active:scale-95 text-blue-700">Start New Cycle</button> : isMiningComplete ? <button onClick={handleClaimMining} className="w-full py-4 bg-green-500 text-white font-black rounded-2xl hover:bg-green-600 transition-all shadow-lg animate-pulse active:scale-95 text-white">Claim ${currentVIP?.dailyReturn.toFixed(2)}</button> : <div className="w-full py-4 bg-white/20 text-white font-black rounded-2xl flex items-center justify-center cursor-wait backdrop-blur-sm"><i className="fa-solid fa-gear fa-spin mr-3"></i> Mining...</div>}
                   </div>
                 </div>
               </div>
 
               {/* Mining Farm Video Section */}
               {depositConfig.miningVideoUrl && (
-                <div className="bg-white dark:bg-gray-900 p-6 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm transition-all overflow-hidden">
+                <div className="bg-white/50 dark:bg-gray-800/50 backdrop-blur-md p-6 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm transition-all overflow-hidden">
                   <h4 className="text-sm font-black text-gray-800 dark:text-white uppercase tracking-widest mb-4 flex items-center">
                     <i className="fa-solid fa-microchip text-blue-600 mr-2"></i> Live Mining Farm Status
                   </h4>
@@ -390,7 +416,7 @@ const Dashboard: React.FC = () => {
                       Live Feed
                     </div>
                   </div>
-                  <p className="mt-4 text-xs text-gray-500 dark:text-gray-400 font-medium italic">
+                  <p className="mt-4 text-xs text-gray-500 dark:text-gray-400 font-medium italic text-left">
                     Real-time monitoring of our cloud hashing facilities. Your VIP level determines your slice of this processing power.
                   </p>
                 </div>
@@ -404,14 +430,14 @@ const Dashboard: React.FC = () => {
                 const isActive = user?.activeVipId === vip.id;
                 const isLocked = user?.activeVipId && vip.id < user.activeVipId;
                 return (
-                  <div key={vip.id} className={`p-6 rounded-3xl border transition-all ${isActive ? 'border-blue-600 bg-blue-50/30 dark:bg-blue-900/10' : 'border-gray-100 dark:border-gray-800'}`}>
-                    <h4 className="text-xl font-black mb-2 uppercase">{vip.name}</h4>
-                    <div className="text-2xl font-black text-blue-600 mb-6">${vip.price} <span className="text-xs font-normal text-gray-500">USD</span></div>
-                    <ul className="space-y-2 mb-8 text-sm text-gray-600 dark:text-gray-400">
+                  <div key={vip.id} className={`p-6 rounded-3xl border transition-all ${isActive ? 'border-blue-600 bg-blue-50/30 dark:bg-blue-900/10' : 'border-gray-100 dark:border-gray-800 bg-white/40 dark:bg-gray-800/40'}`}>
+                    <h4 className="text-xl font-black mb-2 uppercase text-left text-gray-800 dark:text-white">{vip.name}</h4>
+                    <div className="text-2xl font-black text-blue-600 mb-6 text-left">${vip.price} <span className="text-xs font-normal text-gray-500">USD</span></div>
+                    <ul className="space-y-2 mb-8 text-sm text-gray-600 dark:text-gray-400 text-left">
                       <li><i className="fa-solid fa-check text-green-500 mr-2"></i> Daily: ${vip.dailyReturn.toFixed(2)}</li>
                       <li><i className="fa-solid fa-check text-green-500 mr-2"></i> Monthly: ${(vip.dailyReturn * 30).toFixed(2)}</li>
                     </ul>
-                    <button disabled={isActive || isLocked} onClick={() => handlePurchaseVIP(vip)} className={`w-full py-3 rounded-xl font-bold ${isActive ? 'bg-gray-100 text-gray-400' : 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'}`}>{isActive ? 'Current Plan' : 'Activate'}</button>
+                    <button disabled={isActive || isLocked} onClick={() => handlePurchaseVIP(vip)} className={`w-full py-3 rounded-xl font-bold ${isActive ? 'bg-gray-100 text-gray-400' : 'bg-blue-600 text-white shadow-lg shadow-blue-500/20 active:scale-95'}`}>{isActive ? 'Current Plan' : 'Activate'}</button>
                   </div>
                 );
               })}
@@ -422,17 +448,17 @@ const Dashboard: React.FC = () => {
             <div className="max-w-xl mx-auto space-y-8">
               {depositStep === 'input' && (
                 <div className="space-y-6">
-                  <div className="bg-blue-50 dark:bg-blue-900/10 p-8 rounded-3xl border border-blue-100 dark:border-blue-800 text-center">
+                  <div className="bg-blue-50/50 dark:bg-blue-900/20 p-8 rounded-3xl border border-blue-100 dark:border-blue-800 text-center">
                     <h3 className="text-2xl font-black text-blue-700 dark:text-blue-400 mb-2">Initialize Deposit</h3>
                     <p className="text-sm text-gray-500 dark:text-gray-400">Enter the amount you wish to credit to your account.</p>
                   </div>
-                  <div>
+                  <div className="text-left">
                     <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Amount to Deposit (USD)</label>
                     <input 
                       type="number" 
                       required 
                       min="1" 
-                      className="w-full px-5 py-4 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 font-bold text-xl" 
+                      className="w-full px-5 py-4 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 font-bold text-xl dark:text-white outline-none focus:ring-2 focus:ring-blue-500" 
                       value={depositAmount} 
                       onChange={(e) => setDepositAmount(e.target.value)} 
                       placeholder="0.00" 
@@ -450,7 +476,7 @@ const Dashboard: React.FC = () => {
               {depositStep === 'payment' && (
                 <div className="space-y-8 animate-in slide-in-from-right-4 duration-300">
                   <div className="bg-blue-600 rounded-3xl p-8 text-white text-center shadow-xl shadow-blue-500/20">
-                    <p className="text-[10px] font-black uppercase tracking-widest opacity-80 mb-4 text-white">Select Payment Token</p>
+                    <p className="text-[10px] font-black uppercase tracking-widest opacity-80 mb-4">Select Payment Token</p>
                     <div className="flex flex-wrap justify-center gap-2 mb-8">
                       {depositConfig.tokens.map((token, idx) => (
                         <button 
@@ -462,7 +488,7 @@ const Dashboard: React.FC = () => {
                         </button>
                       ))}
                     </div>
-                    <h4 className="text-sm font-bold opacity-80 mb-2 text-white">Deposit Address ({depositConfig.tokens[selectedTokenIndex]?.name})</h4>
+                    <h4 className="text-sm font-bold opacity-80 mb-2">Deposit Address ({depositConfig.tokens[selectedTokenIndex]?.name})</h4>
                     <div className="bg-white/10 p-5 rounded-2xl font-mono text-xs break-all border border-white/20 select-all cursor-copy mb-4" onClick={() => {
                       navigator.clipboard.writeText(depositConfig.tokens[selectedTokenIndex]?.address || '');
                       alert('Address copied!');
@@ -481,7 +507,7 @@ const Dashboard: React.FC = () => {
                     </button>
                     <button 
                       onClick={() => setDepositStep('input')}
-                      className="w-full py-4 text-gray-500 font-bold hover:text-gray-700 dark:hover:text-gray-300"
+                      className="w-full py-4 text-gray-500 font-bold hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
                     >
                       Cancel & Go Back
                     </button>
@@ -493,10 +519,10 @@ const Dashboard: React.FC = () => {
                 <div className="space-y-8 animate-in slide-in-from-right-4 duration-300">
                   <div className="bg-gray-50 dark:bg-gray-800/50 p-8 rounded-3xl border border-gray-200 dark:border-gray-700 text-center">
                     <i className="fa-solid fa-camera text-4xl text-blue-600 mb-4"></i>
-                    <h3 className="text-xl font-black mb-2">Upload Proof of Payment</h3>
+                    <h3 className="text-xl font-black mb-2 text-gray-800 dark:text-white">Upload Proof of Payment</h3>
                     <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">Take a screenshot of your successful transaction and upload it below.</p>
                     
-                    <label className="block">
+                    <label className="block text-left">
                       <span className="sr-only">Choose screenshot</span>
                       <input 
                         type="file" 
@@ -523,7 +549,7 @@ const Dashboard: React.FC = () => {
                     </button>
                     <button 
                       onClick={() => setDepositStep('payment')}
-                      className="w-full py-4 text-gray-500 font-bold"
+                      className="w-full py-4 text-gray-500 font-bold hover:text-gray-700 transition-colors"
                     >
                       Back to details
                     </button>
@@ -534,22 +560,36 @@ const Dashboard: React.FC = () => {
           )}
 
           {activeTab === 'withdraw' && (
-            <div className="max-w-xl mx-auto space-y-8">
-              <div className="bg-gray-100 dark:bg-gray-800 p-8 rounded-3xl text-center border border-gray-200 dark:border-gray-700">
-                <p className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-2">Available Balance</p>
-                <p className="text-4xl font-black text-gray-800 dark:text-white">${user?.walletBalance.toFixed(2)}</p>
-              </div>
-              <form onSubmit={handleWithdraw} className="space-y-6">
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Withdraw Amount (USD)</label>
-                  <input type="number" required min={MIN_WITHDRAWAL} max={user?.walletBalance} className="w-full px-5 py-4 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 font-bold" value={withdrawAmount} onChange={(e) => setWithdrawAmount(e.target.value)} placeholder={`Min $${MIN_WITHDRAWAL}`} />
+            <div className="max-w-xl mx-auto space-y-8 text-left">
+              {depositConfig.withdrawalMaintenance ? (
+                <div className="bg-orange-50 dark:bg-orange-900/20 p-10 rounded-[2.5rem] border border-orange-100 dark:border-orange-800 text-center">
+                  <div className="w-20 h-20 bg-orange-100 dark:bg-orange-800 text-orange-600 dark:text-orange-400 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <i className="fa-solid fa-screwdriver-wrench text-3xl"></i>
+                  </div>
+                  <h3 className="text-2xl font-black text-orange-700 dark:text-orange-400 mb-2 uppercase tracking-tight">Withdrawals Disabled</h3>
+                  <p className="text-orange-600 dark:text-orange-500 leading-relaxed font-medium">
+                    Our withdrawal system is currently under maintenance for system upgrades. Please check back later.
+                  </p>
                 </div>
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Wallet Address (TRC-20)</label>
-                  <input type="text" required className="w-full px-5 py-4 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 font-mono" value={withdrawMethod} onChange={(e) => setWithdrawMethod(e.target.value)} placeholder="T..." />
-                </div>
-                <button type="submit" className="w-full py-5 bg-blue-600 text-white font-black rounded-2xl">Request Withdrawal</button>
-              </form>
+              ) : (
+                <>
+                  <div className="bg-gray-100 dark:bg-gray-800 p-8 rounded-3xl text-center border border-gray-200 dark:border-gray-700">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-2">Available Balance</p>
+                    <p className="text-4xl font-black text-gray-800 dark:text-white">${user?.walletBalance.toFixed(2)}</p>
+                  </div>
+                  <form onSubmit={handleWithdraw} className="space-y-6">
+                    <div>
+                      <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Withdraw Amount (USD)</label>
+                      <input type="number" required min={MIN_WITHDRAWAL} max={user?.walletBalance} className="w-full px-5 py-4 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 font-bold dark:text-white outline-none focus:ring-2 focus:ring-blue-500" value={withdrawAmount} onChange={(e) => setWithdrawAmount(e.target.value)} placeholder={`Min $${MIN_WITHDRAWAL}`} />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Wallet Address (TRC-20)</label>
+                      <input type="text" required className="w-full px-5 py-4 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 font-mono dark:text-white outline-none focus:ring-2 focus:ring-blue-500" value={withdrawMethod} onChange={(e) => setWithdrawMethod(e.target.value)} placeholder="T..." />
+                    </div>
+                    <button type="submit" className="w-full py-5 bg-blue-600 text-white font-black rounded-2xl active:scale-95 shadow-lg shadow-blue-500/20">Request Withdrawal</button>
+                  </form>
+                </>
+              )}
             </div>
           )}
 
@@ -568,8 +608,8 @@ const Dashboard: React.FC = () => {
                 <tbody className="text-sm">
                   {userTransactions.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(tx => (
                     <tr key={tx.id} className="border-b border-gray-50 dark:border-gray-800/50">
-                      <td className="px-6 py-5 text-gray-500">{new Date(tx.date).toLocaleDateString()}</td>
-                      <td className="px-6 py-5 font-medium">{tx.description || 'System transaction'}</td>
+                      <td className="px-6 py-5 text-gray-500 dark:text-gray-400">{new Date(tx.date).toLocaleDateString()}</td>
+                      <td className="px-6 py-5 font-medium text-gray-800 dark:text-gray-200">{tx.description || 'System transaction'}</td>
                       <td className="px-6 py-5 uppercase text-[10px] font-black text-gray-400">{tx.type.replace('_', ' ')}</td>
                       <td className="px-6 py-5 font-black text-gray-800 dark:text-gray-200">${tx.amount.toFixed(2)}</td>
                       <td className="px-6 py-5">
@@ -591,7 +631,7 @@ const Dashboard: React.FC = () => {
           onClick={() => setShowChat(!showChat)}
           className="w-14 h-14 bg-blue-600 text-white rounded-full shadow-2xl flex items-center justify-center text-2xl hover:scale-110 transition-transform active:scale-95"
         >
-          {showChat ? <i className="fa-solid fa-xmark"></i> : <i className="fa-solid fa-headset text-white"></i>}
+          {showChat ? <i className="fa-solid fa-xmark"></i> : <i className="fa-solid fa-headset"></i>}
           {chatMessages.some(m => m.isAdmin && !m.text.includes('dismissed')) && !showChat && (
             <span className="absolute top-0 right-0 w-4 h-4 bg-red-500 rounded-full border-2 border-white animate-pulse"></span>
           )}
@@ -602,7 +642,7 @@ const Dashboard: React.FC = () => {
       {showWelcome && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[200] flex items-center justify-center p-4">
           <div className="bg-white dark:bg-gray-900 rounded-[3rem] p-8 md:p-12 max-w-2xl w-full shadow-2xl animate-in zoom-in duration-500 relative overflow-hidden">
-            <div className="absolute top-0 right-0 p-8">
+            <div className="absolute top-0 right-0 p-8 text-right">
               <button onClick={() => setShowWelcome(false)} className="text-gray-400 hover:text-gray-600 transition-colors"><i className="fa-solid fa-xmark text-2xl"></i></button>
             </div>
             <div className="flex flex-col items-center text-center">
@@ -648,7 +688,7 @@ const Dashboard: React.FC = () => {
           <div className="p-4 bg-blue-600 text-white flex justify-between items-center">
             <div className="flex items-center space-x-3 text-white">
               <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center"><i className="fa-solid fa-user-tie"></i></div>
-              <div><h4 className="font-bold text-sm text-white">Live Support</h4><p className="text-[10px] opacity-80 text-white">We usually reply instantly</p></div>
+              <div className="text-left"><h4 className="font-bold text-sm text-white">Live Support</h4><p className="text-[10px] opacity-80 text-white">We usually reply instantly</p></div>
             </div>
           </div>
           <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50/50 dark:bg-gray-800/20">
@@ -660,8 +700,8 @@ const Dashboard: React.FC = () => {
             {chatMessages.map(m => (
               <div key={m.id} className={`flex ${m.isAdmin ? 'justify-start' : 'justify-end'}`}>
                 <div className={`max-w-[80%] p-3 rounded-2xl text-sm ${m.isAdmin ? 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 shadow-sm' : 'bg-blue-600 text-white shadow-lg shadow-blue-500/10'}`}>
-                  <p className="leading-relaxed">{m.text}</p>
-                  <p className={`text-[9px] mt-1 opacity-60 ${m.isAdmin ? 'text-gray-400' : 'text-blue-100'}`}>{new Date(m.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</p>
+                  <p className="leading-relaxed text-left">{m.text}</p>
+                  <p className={`text-[9px] mt-1 opacity-60 text-right ${m.isAdmin ? 'text-gray-400' : 'text-blue-100'}`}>{new Date(m.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</p>
                 </div>
               </div>
             ))}
@@ -670,12 +710,12 @@ const Dashboard: React.FC = () => {
           <form onSubmit={handleSendMessage} className="p-4 border-t border-gray-100 dark:border-gray-800 flex gap-2">
             <input 
               type="text" 
-              className="flex-1 px-4 py-2 rounded-xl bg-gray-100 dark:bg-gray-800 dark:text-white outline-none text-sm" 
+              className="flex-1 px-4 py-2 rounded-xl bg-gray-100 dark:bg-gray-800 dark:text-white outline-none text-sm focus:ring-2 focus:ring-blue-500" 
               placeholder="Type your message..." 
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
             />
-            <button type="submit" className="w-10 h-10 bg-blue-600 text-white rounded-xl flex items-center justify-center"><i className="fa-solid fa-paper-plane text-white"></i></button>
+            <button type="submit" className="w-10 h-10 bg-blue-600 text-white rounded-xl flex items-center justify-center active:scale-95 transition-transform"><i className="fa-solid fa-paper-plane"></i></button>
           </form>
         </div>
       )}
@@ -685,12 +725,12 @@ const Dashboard: React.FC = () => {
         <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[100] flex items-center justify-center p-4">
           <div className="bg-white dark:bg-gray-900 rounded-[2.5rem] p-8 max-w-lg w-full shadow-2xl animate-in zoom-in duration-300">
             <div className="flex flex-col items-center text-center">
-              <div className="w-20 h-20 bg-blue-100 dark:bg-blue-900/40 text-blue-600 rounded-3xl flex items-center justify-center text-3xl mb-8"><i className="fa-solid fa-crown text-blue-600"></i></div>
+              <div className="w-20 h-20 bg-blue-100 dark:bg-blue-900/40 text-blue-600 rounded-3xl flex items-center justify-center text-3xl mb-8"><i className="fa-solid fa-crown"></i></div>
               <h3 className="text-3xl font-black mb-4 uppercase text-gray-900 dark:text-white">Upgrade Tier</h3>
               <p className="text-gray-500 dark:text-gray-400 mb-8 leading-relaxed font-medium">Activate <span className="text-blue-600 font-black">{pendingVip.name}</span> for <span className="text-gray-900 dark:text-white font-black">${pendingVip.price}</span>. Existing mining cycles will reset.</p>
               <div className="flex gap-4 w-full">
                 <button onClick={confirmPurchase} className="flex-1 py-5 bg-blue-600 text-white font-black rounded-2xl shadow-xl shadow-blue-500/20 active:scale-95">Confirm</button>
-                <button onClick={() => { setShowVipModal(false); setPendingVip(null); }} className="flex-1 py-5 bg-gray-100 dark:bg-gray-800 text-gray-600 rounded-2xl active:scale-95">Cancel</button>
+                <button onClick={() => { setShowVipModal(false); setPendingVip(null); }} className="flex-1 py-5 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded-2xl active:scale-95">Cancel</button>
               </div>
             </div>
           </div>

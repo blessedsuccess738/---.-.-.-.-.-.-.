@@ -18,6 +18,8 @@ const AdminPanel: React.FC = () => {
   const [tgSupport, setTgSupport] = useState(paymentConfig.telegramSupport || '');
   const [tgChannel, setTgChannel] = useState(paymentConfig.telegramChannel || '');
   const [miningVideo, setMiningVideo] = useState(paymentConfig.miningVideoUrl || '');
+  const [bgVideo, setBgVideo] = useState(paymentConfig.backgroundVideoUrl || '');
+  const [withdrawMaint, setWithdrawMaint] = useState(paymentConfig.withdrawalMaintenance || false);
 
   // Support Chat State
   const [selectedChatUserId, setSelectedChatUserId] = useState<string | null>(null);
@@ -107,7 +109,9 @@ const AdminPanel: React.FC = () => {
       tokens: newTokens,
       telegramSupport: tgSupport,
       telegramChannel: tgChannel,
-      miningVideoUrl: miningVideo
+      miningVideoUrl: miningVideo,
+      backgroundVideoUrl: bgVideo,
+      withdrawalMaintenance: withdrawMaint
     });
     alert('Platform configuration updated successfully!');
   };
@@ -169,9 +173,9 @@ const AdminPanel: React.FC = () => {
                 <tbody className="text-sm">
                   {users.map(u => (
                     <tr key={u.id} className="border-b border-gray-50 dark:border-gray-800/50">
-                      <td className="px-6 py-5"><div className="font-black">{u.username}</div><div className="text-[10px] text-gray-400">{u.email}</div></td>
-                      <td className="px-6 py-5 uppercase font-black text-[10px]">{u.activeVipId ? `VIP ${u.activeVipId}` : 'NONE'}</td>
-                      <td className="px-6 py-5 font-mono font-black">${u.walletBalance.toFixed(2)}</td>
+                      <td className="px-6 py-5"><div className="font-black text-gray-800 dark:text-white">{u.username}</div><div className="text-[10px] text-gray-400">{u.email}</div></td>
+                      <td className="px-6 py-5 uppercase font-black text-[10px] dark:text-gray-300">{u.activeVipId ? `VIP ${u.activeVipId}` : 'NONE'}</td>
+                      <td className="px-6 py-5 font-mono font-black dark:text-gray-300">${u.walletBalance.toFixed(2)}</td>
                       <td className="px-6 py-5"><button onClick={() => { setEditingUser(u); setEditBalance(u.walletBalance.toString()); }} className="text-blue-600 font-black uppercase text-[10px] hover:underline">Adjust Balance</button></td>
                     </tr>
                   ))}
@@ -183,7 +187,7 @@ const AdminPanel: React.FC = () => {
           {activeView === 'support' && (
             <div className="grid grid-cols-1 md:grid-cols-12 gap-6 h-[600px]">
               <div className="md:col-span-4 border-r border-gray-100 dark:border-gray-800 pr-4 overflow-y-auto space-y-2">
-                <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-4">Active Conversations</h4>
+                <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-4 text-left">Active Conversations</h4>
                 {chatUserIds.map(uid => {
                   const chatUser = users.find(u => u.id === uid);
                   const lastMsg = db.getChats(uid).slice(-1)[0];
@@ -191,14 +195,14 @@ const AdminPanel: React.FC = () => {
                     <button 
                       key={uid}
                       onClick={() => setSelectedChatUserId(uid)}
-                      className={`w-full p-4 rounded-2xl text-left transition-all flex items-center gap-3 ${selectedChatUserId === uid ? 'bg-blue-600 text-white' : 'bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                      className={`w-full p-4 rounded-2xl text-left transition-all flex items-center gap-3 ${selectedChatUserId === uid ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
                     >
                       <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${selectedChatUserId === uid ? 'bg-white/20' : 'bg-blue-600 text-white'}`}>
                         {chatUser?.username.charAt(0).toUpperCase() || 'U'}
                       </div>
                       <div className="flex-1 min-w-0 text-left">
-                        <div className="font-black text-sm truncate">{chatUser?.username || 'Unknown User'}</div>
-                        <div className={`text-[10px] truncate ${selectedChatUserId === uid ? 'opacity-80' : 'text-gray-400'}`}>{lastMsg?.text || 'No messages'}</div>
+                        <div className={`font-black text-sm truncate ${selectedChatUserId === uid ? 'text-white' : 'text-gray-800 dark:text-white'}`}>{chatUser?.username || 'Unknown User'}</div>
+                        <div className={`text-[10px] truncate ${selectedChatUserId === uid ? 'text-white/80' : 'text-gray-400'}`}>{lastMsg?.text || 'No messages'}</div>
                       </div>
                     </button>
                   );
@@ -212,7 +216,7 @@ const AdminPanel: React.FC = () => {
                       {chatMessages.map(m => (
                         <div key={m.id} className={`flex ${m.isAdmin ? 'justify-end' : 'justify-start'}`}>
                           <div className={`max-w-[70%] p-3 rounded-2xl text-sm ${m.isAdmin ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/10' : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 border border-gray-100 dark:border-gray-700 shadow-sm'}`}>
-                            <p className="leading-relaxed">{m.text}</p>
+                            <p className="leading-relaxed text-left">{m.text}</p>
                             <p className="text-[9px] mt-1 opacity-60 text-right">{new Date(m.timestamp).toLocaleTimeString()}</p>
                           </div>
                         </div>
@@ -221,7 +225,7 @@ const AdminPanel: React.FC = () => {
                     </div>
                     <form onSubmit={handleSendMessage} className="p-4 bg-white dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800 flex gap-2">
                       <input type="text" className="flex-1 px-4 py-3 rounded-xl bg-gray-100 dark:bg-gray-800 dark:text-white outline-none text-sm" placeholder="Type a reply..." value={chatInput} onChange={(e) => setChatInput(e.target.value)} />
-                      <button type="submit" className="px-6 py-3 bg-blue-600 text-white rounded-xl font-black uppercase text-xs tracking-widest active:scale-95">Send Reply</button>
+                      <button type="submit" className="px-6 py-3 bg-blue-600 text-white rounded-xl font-black uppercase text-xs tracking-widest active:scale-95 text-white">Send Reply</button>
                     </form>
                   </>
                 ) : (
@@ -236,15 +240,49 @@ const AdminPanel: React.FC = () => {
               <div className="bg-blue-50 dark:bg-blue-900/10 p-8 rounded-[2.5rem] border border-blue-100 dark:border-blue-900/30">
                 <h4 className="text-sm font-black text-blue-700 uppercase tracking-widest mb-6 flex items-center gap-2"><i className="fa-solid fa-wallet text-blue-600"></i> Global Settings & Payments</h4>
                 
+                {/* Global Maintenance & Theme Toggles */}
+                <div className="bg-white dark:bg-gray-800/40 p-6 rounded-3xl border border-blue-100 dark:border-blue-800/50 mb-10 text-left">
+                  <h5 className="text-[10px] font-black uppercase text-gray-400 mb-6 tracking-widest border-b pb-2">Platform Control</h5>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="flex items-center justify-between bg-orange-50 dark:bg-orange-950/20 p-5 rounded-2xl border border-orange-100 dark:border-orange-900/50">
+                      <div>
+                        <h6 className="font-black text-sm text-orange-700 dark:text-orange-400 uppercase">Withdrawal Maintenance</h6>
+                        <p className="text-[10px] text-orange-600 dark:text-orange-500">Block all user payout requests</p>
+                      </div>
+                      <button 
+                        onClick={() => setWithdrawMaint(!withdrawMaint)}
+                        className={`w-14 h-8 rounded-full relative transition-colors ${withdrawMaint ? 'bg-orange-600' : 'bg-gray-300 dark:bg-gray-700'}`}
+                      >
+                        <div className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-all ${withdrawMaint ? 'left-7' : 'left-1'}`}></div>
+                      </button>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-[10px] font-black uppercase text-gray-400 mb-2 tracking-widest">Global Background Video Link</label>
+                      <div className="relative">
+                        <i className="fa-solid fa-play absolute left-4 top-1/2 -translate-y-1/2 text-blue-600"></i>
+                        <input 
+                          type="text" 
+                          className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-medium dark:text-white"
+                          value={bgVideo}
+                          onChange={(e) => setBgVideo(e.target.value)}
+                          placeholder="Direct MP4 URL for background"
+                        />
+                      </div>
+                      <p className="mt-2 text-[10px] text-gray-400 italic">Overrides default theme colors with a cinematic video background.</p>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Telegram Links Configuration */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10 text-left">
                   <div>
                     <label className="block text-[10px] font-black uppercase text-gray-400 mb-2 tracking-widest">Telegram Support Link</label>
                     <div className="relative">
                       <i className="fa-brands fa-telegram absolute left-4 top-1/2 -translate-y-1/2 text-sky-500"></i>
                       <input 
                         type="text" 
-                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-medium"
+                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-medium dark:text-white"
                         value={tgSupport}
                         onChange={(e) => setTgSupport(e.target.value)}
                         placeholder="https://t.me/..."
@@ -257,7 +295,7 @@ const AdminPanel: React.FC = () => {
                       <i className="fa-solid fa-bullhorn absolute left-4 top-1/2 -translate-y-1/2 text-indigo-500"></i>
                       <input 
                         type="text" 
-                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-medium"
+                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-medium dark:text-white"
                         value={tgChannel}
                         onChange={(e) => setTgChannel(e.target.value)}
                         placeholder="https://t.me/..."
@@ -267,13 +305,13 @@ const AdminPanel: React.FC = () => {
                 </div>
 
                 {/* Video URL Configuration */}
-                <div className="mb-10">
-                  <label className="block text-[10px] font-black uppercase text-gray-400 mb-2 tracking-widest">Mining Farm Video URL (Direct MP4 Link)</label>
+                <div className="mb-10 text-left">
+                  <label className="block text-[10px] font-black uppercase text-gray-400 mb-2 tracking-widest">Mining Farm Video URL (Dashboard Preview)</label>
                   <div className="relative">
                     <i className="fa-solid fa-video absolute left-4 top-1/2 -translate-y-1/2 text-blue-600"></i>
                     <input 
                       type="text" 
-                      className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-medium"
+                      className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-medium dark:text-white"
                       value={miningVideo}
                       onChange={(e) => setMiningVideo(e.target.value)}
                       placeholder="https://example.com/mining.mp4"
@@ -282,16 +320,16 @@ const AdminPanel: React.FC = () => {
                 </div>
 
                 <div className="space-y-6">
-                  <h5 className="text-[10px] font-black uppercase text-gray-400 mb-4 tracking-widest border-b pb-2">Deposit Tokens</h5>
+                  <h5 className="text-[10px] font-black uppercase text-gray-400 mb-4 tracking-widest border-b pb-2 text-left">Deposit Tokens</h5>
                   {newTokens.map((token, idx) => (
-                    <div key={idx} className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end bg-white dark:bg-gray-800 p-6 rounded-3xl border border-gray-100 dark:border-gray-700 shadow-sm">
-                      <div className="md:col-span-3 text-left">
+                    <div key={idx} className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end bg-white dark:bg-gray-800 p-6 rounded-3xl border border-gray-100 dark:border-gray-700 shadow-sm text-left">
+                      <div className="md:col-span-3">
                         <label className="block text-[10px] font-black uppercase text-gray-400 mb-1 tracking-widest">Token Name</label>
-                        <input type="text" className="w-full px-4 py-2 rounded-xl border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-sm font-bold" value={token.name} onChange={(e) => handleTokenChange(idx, 'name', e.target.value)} placeholder="e.g. USDT (TRC-20)" />
+                        <input type="text" className="w-full px-4 py-2 rounded-xl border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-sm font-bold dark:text-white" value={token.name} onChange={(e) => handleTokenChange(idx, 'name', e.target.value)} placeholder="e.g. USDT (TRC-20)" />
                       </div>
-                      <div className="md:col-span-7 text-left">
+                      <div className="md:col-span-7">
                         <label className="block text-[10px] font-black uppercase text-gray-400 mb-1 tracking-widest">Wallet Address</label>
-                        <input type="text" className="w-full px-4 py-2 rounded-xl border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-sm font-mono" value={token.address} onChange={(e) => handleTokenChange(idx, 'address', e.target.value)} placeholder="Wallet Address" />
+                        <input type="text" className="w-full px-4 py-2 rounded-xl border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-sm font-mono dark:text-white" value={token.address} onChange={(e) => handleTokenChange(idx, 'address', e.target.value)} placeholder="Wallet Address" />
                       </div>
                       <div className="md:col-span-2 flex gap-2">
                         <button onClick={() => setNewTokens(newTokens.filter((_, i) => i !== idx))} className="w-full py-2 bg-red-50 text-red-600 rounded-xl text-xs hover:bg-red-100 transition-all"><i className="fa-solid fa-trash"></i></button>
@@ -301,13 +339,15 @@ const AdminPanel: React.FC = () => {
                   <button onClick={addTokenRow} disabled={newTokens.length >= 5} className="w-full py-4 border-2 border-dashed border-blue-200 text-blue-600 rounded-2xl text-xs font-black uppercase hover:bg-blue-50 transition-all disabled:opacity-50">+ Add Custom Token Address</button>
                 </div>
                 <div className="mt-10 flex gap-4">
-                  <button onClick={savePaymentConfig} className="flex-1 py-5 bg-blue-600 text-white rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-blue-500/20 active:scale-95">Save Platform Configuration</button>
+                  <button onClick={savePaymentConfig} className="flex-1 py-5 bg-blue-600 text-white rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-blue-500/20 active:scale-95 text-white">Save All Configuration</button>
                   <button onClick={() => {
                     const cfg = db.getDepositConfig();
                     setNewTokens(cfg.tokens);
                     setTgSupport(cfg.telegramSupport || '');
                     setTgChannel(cfg.telegramChannel || '');
                     setMiningVideo(cfg.miningVideoUrl || '');
+                    setBgVideo(cfg.backgroundVideoUrl || '');
+                    setWithdrawMaint(cfg.withdrawalMaintenance || false);
                   }} className="px-8 py-5 bg-gray-100 text-gray-600 rounded-2xl font-black uppercase tracking-widest active:scale-95">Reset</button>
                 </div>
               </div>
@@ -317,7 +357,7 @@ const AdminPanel: React.FC = () => {
           {activeView === 'deposits' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {pendingDeposits.map(tx => (
-                <div key={tx.id} className="bg-gray-50 dark:bg-gray-800/30 p-6 rounded-3xl border border-gray-100 dark:border-gray-800 flex flex-col text-left">
+                <div key={tx.id} className="bg-gray-50 dark:bg-gray-800/30 p-6 rounded-3xl border border-gray-100 dark:border-gray-800 flex flex-col text-left shadow-sm">
                   <div className="flex justify-between mb-4">
                     <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">{tx.id}</span>
                     <span className="text-[10px] text-gray-400">{new Date(tx.date).toLocaleString()}</span>
@@ -341,7 +381,7 @@ const AdminPanel: React.FC = () => {
                   )}
 
                   <div className="flex gap-3">
-                    <button onClick={() => handleApproveTransaction(tx)} className="flex-1 py-4 bg-green-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-lg shadow-green-500/20 active:scale-95">Approve</button>
+                    <button onClick={() => handleApproveTransaction(tx)} className="flex-1 py-4 bg-green-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-lg shadow-green-500/20 active:scale-95 text-white">Approve</button>
                     <button onClick={() => handleRejectTransaction(tx)} className="flex-1 py-4 bg-red-100 text-red-600 rounded-2xl font-black uppercase text-xs tracking-widest active:scale-95">Reject</button>
                   </div>
                 </div>
@@ -353,7 +393,7 @@ const AdminPanel: React.FC = () => {
           {activeView === 'withdrawals' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {pendingWithdrawals.map(tx => (
-                <div key={tx.id} className="bg-gray-50 dark:bg-gray-800/30 p-6 rounded-3xl border border-gray-100 dark:border-gray-800 flex flex-col text-left">
+                <div key={tx.id} className="bg-gray-50 dark:bg-gray-800/30 p-6 rounded-3xl border border-gray-100 dark:border-gray-800 flex flex-col text-left shadow-sm">
                   <div className="flex justify-between mb-4">
                     <span className="text-[10px] font-black text-orange-600 uppercase tracking-widest">{tx.id}</span>
                     <span className="text-[10px] text-gray-400">{new Date(tx.date).toLocaleString()}</span>
@@ -386,36 +426,15 @@ const AdminPanel: React.FC = () => {
         </div>
       </div>
 
-      {/* Adjust Balance Modal */}
-      {editingUser && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-gray-900 rounded-[2.5rem] p-10 max-w-sm w-full shadow-2xl animate-in zoom-in duration-300">
-            <h3 className="text-2xl font-black mb-2 uppercase text-gray-900 dark:text-white">Adjust Credit</h3>
-            <p className="text-xs text-gray-400 mb-8 font-black uppercase tracking-widest">User: {editingUser.username}</p>
-            <form onSubmit={handleUpdateBalance} className="space-y-6">
-              <input type="number" step="0.01" autoFocus className="w-full px-5 py-4 rounded-2xl border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 font-black text-2xl outline-none dark:text-white" value={editBalance} onChange={(e) => setEditBalance(e.target.value)} />
-              <div className="flex gap-4">
-                <button type="submit" className="flex-1 py-4 bg-blue-600 text-white font-black rounded-2xl active:scale-95 text-white">Confirm</button>
-                <button type="button" onClick={() => setEditingUser(null)} className="flex-1 py-4 bg-gray-100 text-gray-600 rounded-2xl">Cancel</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Receipt Viewer Modal */}
+      {/* Fullscreen Image Viewer Modal */}
       {viewingReceiptUrl && (
         <div className="fixed inset-0 bg-black/95 z-[200] flex flex-col items-center justify-center p-4" onClick={() => setViewingReceiptUrl(null)}>
           <div className="absolute top-6 right-6 flex gap-4">
-            <a href={viewingReceiptUrl} download="receipt.png" className="w-12 h-12 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center backdrop-blur-md" onClick={(e) => e.stopPropagation()}>
-              <i className="fa-solid fa-download"></i>
-            </a>
             <button className="w-12 h-12 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center backdrop-blur-md">
               <i className="fa-solid fa-xmark"></i>
             </button>
           </div>
           <img src={viewingReceiptUrl} alt="Receipt Fullscreen" className="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl" onClick={(e) => e.stopPropagation()} />
-          <p className="mt-8 text-white/60 text-sm font-black uppercase tracking-widest">Click anywhere to close</p>
         </div>
       )}
     </div>
