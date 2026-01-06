@@ -99,6 +99,8 @@ const Dashboard: React.FC = () => {
 
   const handlePurchaseVIP = (vip: VIPLevel) => {
     if (!user) return;
+    
+    // Immediate checks
     if (user.activeVipId && vip.id <= user.activeVipId) {
       setMessage({ type: 'error', text: 'You cannot downgrade or purchase the same VIP level.' });
       return;
@@ -108,17 +110,18 @@ const Dashboard: React.FC = () => {
       return;
     }
 
-    const confirm = window.confirm(`Confirm purchase of ${vip.name} for $${vip.price}? This will cancel your previous VIP.`);
+    const confirm = window.confirm(`Confirm purchase of ${vip.name} for $${vip.price}? Your account will be debited immediately.`);
     if (!confirm) return;
 
     const users = db.getUsers();
     const transactions = db.getTransactions();
 
+    // Critical: Debit logic
     const updatedUsers = users.map(u => u.id === user.id ? { 
       ...u, 
       walletBalance: u.walletBalance - vip.price,
       activeVipId: vip.id,
-      miningTimerStart: null // Reset mining on upgrade
+      miningTimerStart: null // Reset mining on upgrade for fresh cycle
     } : u);
 
     const newTransaction: Transaction = {
@@ -131,10 +134,13 @@ const Dashboard: React.FC = () => {
       description: `Upgrade to ${vip.name}`
     };
 
+    // Save all immediately
     db.setUsers(updatedUsers);
     db.setTransactions([newTransaction, ...transactions]);
+    
+    // UI Update
     refreshUserData();
-    setMessage({ type: 'success', text: `Successfully upgraded to ${vip.name}!` });
+    setMessage({ type: 'success', text: `Successfully upgraded to ${vip.name}! Your account was debited $${vip.price}.` });
   };
 
   const handleDeposit = (e: React.FormEvent) => {
@@ -182,9 +188,8 @@ const Dashboard: React.FC = () => {
       method: withdrawMethod || 'Generic',
     };
 
-    // We don't deduct balance until admin approval
     db.setTransactions([newTx, ...transactions]);
-    setMessage({ type: 'success', text: 'Withdrawal request submitted. Your balance will be deducted once approved.' });
+    setMessage({ type: 'success', text: 'Withdrawal request submitted. Balance will be deducted after admin approval.' });
     setWithdrawAmount('');
     setActiveTab('overview');
   };
@@ -197,144 +202,148 @@ const Dashboard: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* User Stats Card */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center space-x-4">
-          <div className="bg-blue-100 p-3 rounded-xl text-blue-600">
-            <i className="fa-solid fa-wallet text-xl"></i>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+        <div className="bg-white dark:bg-gray-900 p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 flex flex-col md:flex-row md:items-center md:space-x-4">
+          <div className="bg-blue-100 dark:bg-blue-900/30 p-2 md:p-3 rounded-xl text-blue-600 dark:text-blue-400 w-fit mb-2 md:mb-0">
+            <i className="fa-solid fa-wallet text-lg md:text-xl"></i>
           </div>
           <div>
-            <p className="text-gray-500 text-xs font-medium uppercase">Balance</p>
-            <p className="text-2xl font-bold text-gray-800">${user.walletBalance.toFixed(2)}</p>
+            <p className="text-gray-500 dark:text-gray-400 text-[10px] md:text-xs font-bold uppercase tracking-wider">Balance</p>
+            <p className="text-xl md:text-2xl font-black text-gray-800 dark:text-white">${user.walletBalance.toFixed(2)}</p>
           </div>
         </div>
-        <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center space-x-4">
-          <div className="bg-purple-100 p-3 rounded-xl text-purple-600">
-            <i className="fa-solid fa-crown text-xl"></i>
+        <div className="bg-white dark:bg-gray-900 p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 flex flex-col md:flex-row md:items-center md:space-x-4">
+          <div className="bg-purple-100 dark:bg-purple-900/30 p-2 md:p-3 rounded-xl text-purple-600 dark:text-purple-400 w-fit mb-2 md:mb-0">
+            <i className="fa-solid fa-crown text-lg md:text-xl"></i>
           </div>
           <div>
-            <p className="text-gray-500 text-xs font-medium uppercase">Active VIP</p>
-            <p className="text-2xl font-bold text-gray-800">{currentVIP ? currentVIP.name : 'NONE'}</p>
+            <p className="text-gray-500 dark:text-gray-400 text-[10px] md:text-xs font-bold uppercase tracking-wider">Active VIP</p>
+            <p className="text-xl md:text-2xl font-black text-gray-800 dark:text-white">{currentVIP ? currentVIP.name : 'NONE'}</p>
           </div>
         </div>
-        <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center space-x-4">
-          <div className="bg-green-100 p-3 rounded-xl text-green-600">
-            <i className="fa-solid fa-chart-line text-xl"></i>
+        <div className="bg-white dark:bg-gray-900 p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 flex flex-col md:flex-row md:items-center md:space-x-4">
+          <div className="bg-green-100 dark:bg-green-900/30 p-2 md:p-3 rounded-xl text-green-600 dark:text-green-400 w-fit mb-2 md:mb-0">
+            <i className="fa-solid fa-chart-line text-lg md:text-xl"></i>
           </div>
           <div>
-            <p className="text-gray-500 text-xs font-medium uppercase">Daily Income</p>
-            <p className="text-2xl font-bold text-gray-800">${currentVIP ? currentVIP.dailyReturn.toFixed(2) : '0.00'}</p>
+            <p className="text-gray-500 dark:text-gray-400 text-[10px] md:text-xs font-bold uppercase tracking-wider">Daily Return</p>
+            <p className="text-xl md:text-2xl font-black text-gray-800 dark:text-white">${currentVIP ? currentVIP.dailyReturn.toFixed(2) : '0.00'}</p>
           </div>
         </div>
-        <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center space-x-4">
-          <div className="bg-orange-100 p-3 rounded-xl text-orange-600">
-            <i className="fa-solid fa-hourglass-half text-xl"></i>
+        <div className="bg-white dark:bg-gray-900 p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 flex flex-col md:flex-row md:items-center md:space-x-4">
+          <div className="bg-orange-100 dark:bg-orange-900/30 p-2 md:p-3 rounded-xl text-orange-600 dark:text-orange-400 w-fit mb-2 md:mb-0">
+            <i className="fa-solid fa-hourglass-half text-lg md:text-xl"></i>
           </div>
           <div>
-            <p className="text-gray-500 text-xs font-medium uppercase">Mining Timer</p>
-            <p className="text-2xl font-bold text-gray-800 font-mono">{timeLeft}</p>
+            <p className="text-gray-500 dark:text-gray-400 text-[10px] md:text-xs font-bold uppercase tracking-wider">Mining Timer</p>
+            <p className="text-xl md:text-2xl font-black text-gray-800 dark:text-white font-mono">{timeLeft}</p>
           </div>
         </div>
       </div>
 
       {message && (
-        <div className={`p-4 rounded-xl flex items-center justify-between ${message.type === 'success' ? 'bg-green-50 text-green-700 border border-green-100' : 'bg-red-50 text-red-700 border border-red-100'}`}>
+        <div className={`p-4 rounded-2xl flex items-center justify-between border ${message.type === 'success' ? 'bg-green-50 text-green-700 border-green-100 dark:bg-green-900/20 dark:text-green-400 dark:border-green-800/50' : 'bg-red-50 text-red-700 border-red-100 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800/50'}`}>
           <div className="flex items-center">
             <i className={`fa-solid ${message.type === 'success' ? 'fa-circle-check' : 'fa-circle-xmark'} mr-3`}></i>
-            <span className="text-sm font-medium">{message.text}</span>
+            <span className="text-sm font-semibold">{message.text}</span>
           </div>
-          <button onClick={() => setMessage(null)} className="text-current opacity-60 hover:opacity-100">&times;</button>
+          <button onClick={() => setMessage(null)} className="text-current opacity-60 hover:opacity-100 p-1">&times;</button>
         </div>
       )}
 
       {/* Tabs */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="flex border-b border-gray-100 overflow-x-auto whitespace-nowrap scrollbar-hide">
+      <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden transition-colors">
+        <div className="flex border-b border-gray-100 dark:border-gray-800 overflow-x-auto whitespace-nowrap scrollbar-hide bg-gray-50/50 dark:bg-gray-800/20">
           {(['overview', 'vip', 'deposit', 'withdraw', 'history'] as const).map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-6 py-4 text-sm font-semibold transition-colors border-b-2 ${activeTab === tab ? 'text-blue-600 border-blue-600 bg-blue-50/50' : 'text-gray-500 border-transparent hover:text-gray-700'}`}
+              className={`px-6 py-4 text-sm font-bold transition-all border-b-2 ${activeTab === tab ? 'text-blue-600 border-blue-600 bg-white dark:bg-gray-900' : 'text-gray-500 dark:text-gray-400 border-transparent hover:text-gray-700 dark:hover:text-gray-200'}`}
             >
               {tab.charAt(0).toUpperCase() + tab.slice(1)}
             </button>
           ))}
         </div>
 
-        <div className="p-6">
+        <div className="p-4 md:p-8">
           {activeTab === 'overview' && (
             <div className="space-y-8">
-              <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-2xl p-8 text-white relative overflow-hidden">
-                <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-                  <div>
-                    <h3 className="text-2xl font-bold mb-2">Mining Terminal</h3>
-                    <p className="text-blue-100 opacity-80 max-w-md">
-                      SmartMine protocols are ready. Claim your daily USD returns or start a new cycle. 
-                      Only one active mining session is permitted per account.
+              <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-3xl p-6 md:p-10 text-white relative overflow-hidden shadow-xl shadow-blue-500/20">
+                <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-8">
+                  <div className="max-w-md">
+                    <h3 className="text-3xl font-black mb-3">Mining Terminal</h3>
+                    <p className="text-blue-100/80 leading-relaxed text-sm md:text-base">
+                      Access high-frequency automated mining cycles. 
+                      Upgrade your VIP level to unlock higher hash rates and maximize your daily USD returns.
                     </p>
                   </div>
-                  <div className="flex flex-col items-center justify-center p-6 bg-white/10 rounded-2xl backdrop-blur-sm border border-white/20 min-w-[200px]">
-                    <span className="text-xs font-bold uppercase tracking-wider mb-2 text-blue-200">Session Progress</span>
-                    <span className="text-4xl font-mono font-bold mb-4">{timeLeft}</span>
+                  <div className="flex flex-col items-center justify-center p-6 bg-white/10 rounded-3xl backdrop-blur-md border border-white/20 min-w-[240px] shadow-2xl">
+                    <span className="text-xs font-black uppercase tracking-[0.2em] mb-3 text-blue-200">Current Progress</span>
+                    <span className="text-5xl font-mono font-black mb-6 drop-shadow-md">{timeLeft}</span>
                     {!user.miningTimerStart ? (
                       <button 
                         onClick={handleStartMining}
-                        className="w-full py-3 bg-white text-blue-700 font-bold rounded-xl hover:bg-blue-50 transition-all shadow-lg"
+                        className="w-full py-4 bg-white text-blue-700 font-black rounded-2xl hover:bg-blue-50 transition-all shadow-lg active:scale-95"
                       >
-                        Start Mining
+                        Start New Cycle
                       </button>
                     ) : isMiningComplete ? (
                       <button 
                         onClick={handleClaimMining}
-                        className="w-full py-3 bg-green-500 text-white font-bold rounded-xl hover:bg-green-600 transition-all shadow-lg animate-pulse"
+                        className="w-full py-4 bg-green-500 text-white font-black rounded-2xl hover:bg-green-600 transition-all shadow-lg animate-pulse active:scale-95"
                       >
-                        Claim Earnings
+                        Claim ${currentVIP?.dailyReturn.toFixed(2)}
                       </button>
                     ) : (
-                      <div className="w-full py-3 bg-white/20 text-white font-bold rounded-xl flex items-center justify-center cursor-not-allowed">
-                        <i className="fa-solid fa-spinner fa-spin mr-2"></i> Mining...
+                      <div className="w-full py-4 bg-white/20 text-white font-black rounded-2xl flex items-center justify-center cursor-wait backdrop-blur-sm">
+                        <i className="fa-solid fa-gear fa-spin mr-3"></i> Mining...
                       </div>
                     )}
                   </div>
                 </div>
                 {/* Decorative Elements */}
-                <div className="absolute -right-20 -bottom-20 w-64 h-64 bg-white/10 rounded-full blur-3xl"></div>
+                <div className="absolute -right-24 -bottom-24 w-80 h-80 bg-white/10 rounded-full blur-[80px]"></div>
+                <div className="absolute -left-12 -top-12 w-48 h-48 bg-indigo-400/20 rounded-full blur-[60px]"></div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="border border-gray-100 rounded-2xl p-6 bg-gray-50/50">
-                  <h4 className="font-bold text-gray-800 mb-4 flex items-center">
-                    <i className="fa-solid fa-circle-info text-blue-500 mr-2"></i> Recent Activity
+                <div className="border border-gray-100 dark:border-gray-800 rounded-2xl p-6 bg-gray-50/50 dark:bg-gray-800/30">
+                  <h4 className="font-bold text-gray-800 dark:text-white mb-4 flex items-center">
+                    <i className="fa-solid fa-bolt text-yellow-500 mr-2"></i> Recent Earnings
                   </h4>
                   <div className="space-y-3">
-                    {userTransactions.slice(0, 3).map(tx => (
-                      <div key={tx.id} className="bg-white p-3 rounded-xl shadow-xs flex justify-between items-center border border-gray-50">
-                        <div>
-                          <p className="text-sm font-semibold text-gray-700">{tx.type.replace('_', ' ')}</p>
-                          <p className="text-xs text-gray-400">{new Date(tx.date).toLocaleDateString()}</p>
+                    {userTransactions.filter(t => t.type === TransactionType.MINING_EARNING).slice(0, 3).map(tx => (
+                      <div key={tx.id} className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm flex justify-between items-center border border-gray-50 dark:border-gray-700/50">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center text-green-600 dark:text-green-400 text-xs">
+                            <i className="fa-solid fa-plus"></i>
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold text-gray-700 dark:text-gray-200">Mining Reward</p>
+                            <p className="text-[10px] text-gray-400 dark:text-gray-500">{new Date(tx.date).toLocaleDateString()}</p>
+                          </div>
                         </div>
-                        <span className={`text-sm font-bold ${tx.type === TransactionType.WITHDRAWAL || tx.type === TransactionType.VIP_PURCHASE ? 'text-red-500' : 'text-green-500'}`}>
-                          {tx.type === TransactionType.WITHDRAWAL || tx.type === TransactionType.VIP_PURCHASE ? '-' : '+'}${tx.amount.toFixed(2)}
-                        </span>
+                        <span className="text-sm font-black text-green-500">+${tx.amount.toFixed(2)}</span>
                       </div>
                     ))}
-                    {userTransactions.length === 0 && <p className="text-gray-400 text-center text-sm py-4">No recent activity found.</p>}
+                    {userTransactions.filter(t => t.type === TransactionType.MINING_EARNING).length === 0 && <p className="text-gray-400 dark:text-gray-500 text-center text-sm py-6 italic">No earnings history found.</p>}
                   </div>
                 </div>
-                <div className="border border-gray-100 rounded-2xl p-6 bg-gray-50/50">
-                  <h4 className="font-bold text-gray-800 mb-4 flex items-center">
-                    <i className="fa-solid fa-shield-check text-green-500 mr-2"></i> Security Status
+                <div className="border border-gray-100 dark:border-gray-800 rounded-2xl p-6 bg-gray-50/50 dark:bg-gray-800/30">
+                  <h4 className="font-bold text-gray-800 dark:text-white mb-4 flex items-center">
+                    <i className="fa-solid fa-shield-halved text-blue-500 mr-2"></i> Platform Security
                   </h4>
                   <div className="space-y-4">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-gray-600">Account Verified</span>
-                      <span className="text-xs font-bold px-2 py-1 bg-green-100 text-green-700 rounded-lg">Level 1</span>
+                    <div className="flex justify-between items-center bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-50 dark:border-gray-700/50">
+                      <span className="text-sm text-gray-600 dark:text-gray-400">Account Standing</span>
+                      <span className="text-[10px] font-black px-2 py-1 bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400 rounded-lg uppercase tracking-wider">Excellent</span>
                     </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-gray-600">Login Sessions</span>
-                      <span className="text-xs text-gray-400">1 Active Session</span>
+                    <div className="flex justify-between items-center bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-50 dark:border-gray-700/50">
+                      <span className="text-sm text-gray-600 dark:text-gray-400">IP Protection</span>
+                      <span className="text-[10px] font-black px-2 py-1 bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400 rounded-lg uppercase tracking-wider">Active</span>
                     </div>
-                    <button className="w-full py-2 bg-gray-200 text-gray-700 text-sm font-semibold rounded-lg hover:bg-gray-300 transition-colors">
-                      Update Profile Settings
+                    <button className="w-full py-3 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-xs font-bold rounded-xl hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">
+                      Configure 2FA Security
                     </button>
                   </div>
                 </div>
@@ -344,169 +353,202 @@ const Dashboard: React.FC = () => {
 
           {activeTab === 'vip' && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {VIP_LEVELS.map(vip => (
-                <div key={vip.id} className={`relative p-6 rounded-2xl border ${user.activeVipId === vip.id ? 'border-blue-600 bg-blue-50/20 ring-1 ring-blue-600' : 'border-gray-200 hover:border-blue-300 bg-white transition-all'}`}>
-                  {user.activeVipId === vip.id && (
-                    <div className="absolute top-4 right-4 bg-blue-600 text-white text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-tighter">Current</div>
-                  )}
-                  <h4 className="text-xl font-extrabold text-gray-800 mb-1">{vip.name}</h4>
-                  <p className="text-2xl font-black text-blue-600 mb-4">${vip.price.toFixed(0)}</p>
-                  
-                  <ul className="space-y-3 mb-6">
-                    <li className="flex items-center text-sm text-gray-600">
-                      <i className="fa-solid fa-check text-green-500 mr-2 text-xs"></i> 
-                      Daily Return: <span className="font-bold text-gray-800 ml-1">${vip.dailyReturn.toFixed(2)}</span>
-                    </li>
-                    <li className="flex items-center text-sm text-gray-600">
-                      <i className="fa-solid fa-check text-green-500 mr-2 text-xs"></i> 
-                      Monthly Estimate: <span className="font-bold text-gray-800 ml-1">${(vip.dailyReturn * 30).toFixed(2)}</span>
-                    </li>
-                    <li className="flex items-center text-sm text-gray-600">
-                      <i className="fa-solid fa-check text-green-500 mr-2 text-xs"></i> 
-                      Withdrawal Access
-                    </li>
-                  </ul>
+              {VIP_LEVELS.map(vip => {
+                const isActive = user.activeVipId === vip.id;
+                const isLocked = user.activeVipId && vip.id < user.activeVipId;
+                
+                return (
+                  <div key={vip.id} className={`relative p-8 rounded-3xl border transition-all duration-300 ${isActive ? 'border-blue-600 bg-blue-50/30 dark:bg-blue-900/10 ring-2 ring-blue-600 dark:ring-blue-500' : 'border-gray-100 dark:border-gray-800 hover:border-blue-300 dark:hover:border-blue-700 bg-white dark:bg-gray-900 shadow-sm'}`}>
+                    {isActive && (
+                      <div className="absolute top-6 right-6 bg-blue-600 text-white text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest">Active</div>
+                    )}
+                    <h4 className="text-xl font-black text-gray-800 dark:text-white mb-1 uppercase tracking-tight">{vip.name}</h4>
+                    <div className="flex items-baseline space-x-1 mb-6">
+                      <span className="text-3xl font-black text-blue-600 dark:text-blue-400">${vip.price.toFixed(0)}</span>
+                      <span className="text-xs text-gray-400 font-medium">USD One-time</span>
+                    </div>
+                    
+                    <ul className="space-y-4 mb-8">
+                      <li className="flex items-center text-sm text-gray-600 dark:text-gray-400">
+                        <div className="w-5 h-5 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center text-green-600 dark:text-green-400 mr-3 text-[10px]">
+                          <i className="fa-solid fa-check"></i>
+                        </div>
+                        Daily Return: <span className="font-bold text-gray-800 dark:text-gray-200 ml-1">${vip.dailyReturn.toFixed(2)}</span>
+                      </li>
+                      <li className="flex items-center text-sm text-gray-600 dark:text-gray-400">
+                        <div className="w-5 h-5 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center text-green-600 dark:text-green-400 mr-3 text-[10px]">
+                          <i className="fa-solid fa-check"></i>
+                        </div>
+                        Monthly: <span className="font-bold text-gray-800 dark:text-gray-200 ml-1">${(vip.dailyReturn * 30).toFixed(2)}</span>
+                      </li>
+                      <li className="flex items-center text-sm text-gray-600 dark:text-gray-400">
+                        <div className="w-5 h-5 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center text-green-600 dark:text-green-400 mr-3 text-[10px]">
+                          <i className="fa-solid fa-check"></i>
+                        </div>
+                        Full Withdrawal Support
+                      </li>
+                    </ul>
 
-                  <button 
-                    disabled={user.activeVipId ? vip.id <= user.activeVipId : false}
-                    onClick={() => handlePurchaseVIP(vip)}
-                    className={`w-full py-3 rounded-xl font-bold transition-all ${
-                      user.activeVipId === vip.id 
-                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                      : user.activeVipId && vip.id < user.activeVipId
-                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                      : 'bg-blue-600 text-white hover:bg-blue-700 shadow-md shadow-blue-100'
-                    }`}
-                  >
-                    {user.activeVipId === vip.id ? 'Active' : user.activeVipId && vip.id < user.activeVipId ? 'Locked' : 'Purchase Upgrade'}
-                  </button>
-                </div>
-              ))}
+                    <button 
+                      disabled={isActive || isLocked}
+                      onClick={() => handlePurchaseVIP(vip)}
+                      className={`w-full py-4 rounded-2xl font-black transition-all shadow-md active:scale-95 ${
+                        isActive 
+                        ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 cursor-not-allowed'
+                        : isLocked
+                        ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 cursor-not-allowed opacity-50'
+                        : 'bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 shadow-blue-500/20'
+                      }`}
+                    >
+                      {isActive ? 'Current Plan' : isLocked ? 'Locked (Higher Tier Required)' : 'Activate Now'}
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           )}
 
           {activeTab === 'deposit' && (
             <div className="max-w-xl mx-auto space-y-8">
-              <div className="bg-blue-600 rounded-2xl p-6 text-white text-center">
-                <p className="text-sm opacity-80 mb-1">Send your deposit to the address below</p>
-                <h4 className="text-lg font-bold">SmartMine USD Funding Wallet</h4>
-                <div className="mt-4 bg-white/10 p-4 rounded-xl font-mono break-all text-xs border border-white/20 select-all cursor-pointer" onClick={() => {
+              <div className="bg-blue-600 dark:bg-blue-700 rounded-3xl p-8 text-white text-center shadow-xl shadow-blue-500/20">
+                <p className="text-xs font-bold uppercase tracking-widest opacity-80 mb-2">Funding Address (TRC-20)</p>
+                <h4 className="text-xl font-black mb-6">SmartMine USD Vault</h4>
+                <div className="bg-white/10 p-5 rounded-2xl font-mono break-all text-xs border border-white/20 select-all cursor-copy hover:bg-white/20 transition-all flex items-center justify-center" onClick={() => {
                   navigator.clipboard.writeText('TX47zQvT9KxL2mR5s8pB2vA9mX8wH6qZ3n');
                   alert('Address copied to clipboard!');
                 }}>
-                  TX47zQvT9KxL2mR5s8pB2vA9mX8wH6qZ3n (TRC-20)
+                  <span className="flex-1">TX47zQvT9KxL2mR5s8pB2vA9mX8wH6qZ3n</span>
+                  <i className="fa-regular fa-copy ml-3 opacity-60"></i>
                 </div>
-                <p className="text-[10px] mt-2 opacity-60">* Only USDT (TRC-20) or USD equivalents accepted.</p>
+                <p className="text-[10px] mt-4 font-medium italic opacity-70">Deposits typically arrive within 5-15 minutes after network confirmation.</p>
               </div>
 
-              <form onSubmit={handleDeposit} className="space-y-4">
+              <form onSubmit={handleDeposit} className="space-y-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Amount (USD)</label>
-                  <input 
-                    type="number" 
-                    required
-                    min="1"
-                    placeholder="Enter amount to deposit"
-                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none"
-                    value={depositAmount}
-                    onChange={(e) => setDepositAmount(e.target.value)}
-                  />
+                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Amount to Deposit (USD)</label>
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 font-black text-gray-400">$</span>
+                    <input 
+                      type="number" 
+                      required
+                      min="1"
+                      placeholder="0.00"
+                      className="w-full pl-8 pr-4 py-4 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 dark:text-white focus:ring-4 focus:ring-blue-500/10 outline-none transition-all font-bold"
+                      value={depositAmount}
+                      onChange={(e) => setDepositAmount(e.target.value)}
+                    />
+                  </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Payment Confirmation (Optional)</label>
-                  <div className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center cursor-pointer hover:border-blue-400 transition-colors bg-gray-50">
-                    <i className="fa-solid fa-cloud-arrow-up text-3xl text-gray-300 mb-2"></i>
-                    <p className="text-xs text-gray-500">Click to upload payment receipt or screenshot</p>
+                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Payment Receipt</label>
+                  <label className="border-2 border-dashed border-gray-200 dark:border-gray-800 rounded-3xl p-10 text-center cursor-pointer hover:border-blue-400 dark:hover:border-blue-600 transition-all bg-gray-50/50 dark:bg-gray-900/50 flex flex-col items-center">
+                    <div className="w-12 h-12 bg-white dark:bg-gray-800 rounded-2xl flex items-center justify-center text-gray-400 mb-3 shadow-sm border border-gray-100 dark:border-gray-700">
+                      <i className="fa-solid fa-cloud-arrow-up text-xl"></i>
+                    </div>
+                    <p className="text-sm font-bold text-gray-600 dark:text-gray-400">Click to upload screenshot</p>
+                    <p className="text-[10px] text-gray-400 mt-1">PNG, JPG or PDF up to 10MB</p>
                     <input type="file" className="hidden" />
-                  </div>
+                  </label>
                 </div>
                 <button 
                   type="submit"
-                  className="w-full py-4 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-100"
+                  className="w-full py-5 bg-blue-600 text-white font-black rounded-2xl hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/20 active:scale-95"
                 >
-                  I Have Paid
+                  Confirm Payment
                 </button>
               </form>
             </div>
           )}
 
           {activeTab === 'withdraw' && (
-            <div className="max-w-xl mx-auto space-y-6">
-              <div className="bg-gray-100 rounded-2xl p-6 border border-gray-200 flex justify-between items-center">
+            <div className="max-w-xl mx-auto space-y-8">
+              <div className="bg-gray-100 dark:bg-gray-800/50 rounded-3xl p-8 border border-gray-200 dark:border-gray-700 flex flex-col md:flex-row justify-between items-center gap-6">
                 <div>
-                  <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Withdrawable Balance</p>
-                  <p className="text-3xl font-black text-gray-800">${user.walletBalance.toFixed(2)}</p>
+                  <p className="text-[10px] text-gray-500 dark:text-gray-400 uppercase font-black tracking-[0.2em] mb-1">Available for Payout</p>
+                  <p className="text-4xl font-black text-gray-800 dark:text-white">${user.walletBalance.toFixed(2)}</p>
                 </div>
-                <div className="text-right">
-                  <p className="text-[10px] text-gray-400">Min: ${MIN_WITHDRAWAL}</p>
-                  <p className="text-[10px] text-gray-400">Fee: 0.00%</p>
+                <div className="text-center md:text-right space-y-1">
+                  <div className="text-[10px] font-bold px-3 py-1 bg-white dark:bg-gray-900 rounded-full border border-gray-200 dark:border-gray-700 text-gray-500">Min: ${MIN_WITHDRAWAL}</div>
+                  <div className="text-[10px] font-bold px-3 py-1 bg-white dark:bg-gray-900 rounded-full border border-gray-200 dark:border-gray-700 text-gray-500">Processing Fee: 0%</div>
                 </div>
               </div>
 
-              <form onSubmit={handleWithdraw} className="space-y-4">
+              <form onSubmit={handleWithdraw} className="space-y-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Amount (USD)</label>
+                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Withdraw Amount (USD)</label>
                   <input 
                     type="number" 
                     required
                     min={MIN_WITHDRAWAL}
                     max={user.walletBalance}
-                    placeholder={`Min: $${MIN_WITHDRAWAL}`}
-                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder={`Enter amount (Min $${MIN_WITHDRAWAL})`}
+                    className="w-full px-5 py-4 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 dark:text-white focus:ring-4 focus:ring-blue-500/10 outline-none transition-all font-bold"
                     value={withdrawAmount}
                     onChange={(e) => setWithdrawAmount(e.target.value)}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Withdrawal Method (Wallet/Email)</label>
+                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">USDT Wallet Address (TRC-20)</label>
                   <input 
                     type="text" 
                     required
-                    placeholder="Enter your USDT TRC-20 Address"
-                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="Enter your valid network address"
+                    className="w-full px-5 py-4 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 dark:text-white focus:ring-4 focus:ring-blue-500/10 outline-none transition-all font-mono font-medium"
                     value={withdrawMethod}
                     onChange={(e) => setWithdrawMethod(e.target.value)}
                   />
                 </div>
                 <button 
                   type="submit"
-                  className="w-full py-4 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
+                  className="w-full py-5 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-500/20 active:scale-95"
                 >
-                  Submit Withdrawal Request
+                  Initiate Withdrawal
                 </button>
               </form>
 
-              <div className="bg-orange-50 p-4 rounded-xl border border-orange-100">
-                <p className="text-xs text-orange-800 leading-relaxed">
-                  <i className="fa-solid fa-triangle-exclamation mr-2"></i>
-                  Withdrawals are processed manually by our admin team within 12-24 hours. Your balance will be updated once approved.
+              <div className="bg-orange-50 dark:bg-orange-900/10 p-5 rounded-2xl border border-orange-100 dark:border-orange-900/30 flex items-start">
+                <i className="fa-solid fa-circle-info text-orange-500 mt-1 mr-3"></i>
+                <p className="text-xs text-orange-800 dark:text-orange-300 leading-relaxed font-medium">
+                  Withdrawals are audited manually to ensure platform stability. Funds usually arrive within 2-24 hours. Please verify your address carefully before submission.
                 </p>
               </div>
             </div>
           )}
 
           {activeTab === 'history' && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
+            <div className="overflow-x-auto -mx-4 md:mx-0">
+              <table className="w-full text-left min-w-[600px]">
                 <thead>
-                  <tr className="border-b border-gray-100 text-gray-400 text-xs font-bold uppercase tracking-wider">
-                    <th className="px-4 py-3">Date</th>
-                    <th className="px-4 py-3">Type</th>
-                    <th className="px-4 py-3">Amount</th>
-                    <th className="px-4 py-3">Status</th>
+                  <tr className="border-b border-gray-100 dark:border-gray-800 text-gray-400 dark:text-gray-500 text-[10px] font-black uppercase tracking-widest">
+                    <th className="px-6 py-4">Transaction Date</th>
+                    <th className="px-6 py-4">Type / Event</th>
+                    <th className="px-6 py-4">Amount</th>
+                    <th className="px-6 py-4">Ref Status</th>
                   </tr>
                 </thead>
                 <tbody className="text-sm">
-                  {userTransactions.map(tx => (
-                    <tr key={tx.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
-                      <td className="px-4 py-4 text-gray-500">{new Date(tx.date).toLocaleDateString()}</td>
-                      <td className="px-4 py-4 font-semibold text-gray-700">{tx.type.replace('_', ' ')}</td>
-                      <td className="px-4 py-4 font-bold text-gray-800">${tx.amount.toFixed(2)}</td>
-                      <td className="px-4 py-4">
-                        <span className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase ${
-                          tx.status === TransactionStatus.APPROVED ? 'bg-green-100 text-green-700' :
-                          tx.status === TransactionStatus.REJECTED ? 'bg-red-100 text-red-700' :
-                          'bg-yellow-100 text-yellow-700'
+                  {userTransactions.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(tx => (
+                    <tr key={tx.id} className="border-b border-gray-50 dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-800/20 transition-colors">
+                      <td className="px-6 py-5 text-gray-500 dark:text-gray-400 font-medium">
+                        {new Date(tx.date).toLocaleDateString()}
+                        <div className="text-[10px] opacity-60 font-mono uppercase">{new Date(tx.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+                      </td>
+                      <td className="px-6 py-5">
+                        <p className="font-black text-gray-800 dark:text-gray-200 uppercase text-xs tracking-tight">{tx.type.replace('_', ' ')}</p>
+                        <p className="text-[10px] text-gray-400 font-mono">{tx.id}</p>
+                      </td>
+                      <td className="px-6 py-5">
+                        <span className={`text-sm font-black ${
+                          tx.type === TransactionType.WITHDRAWAL || tx.type === TransactionType.VIP_PURCHASE ? 'text-red-500' : 'text-green-500'
+                        }`}>
+                          {tx.type === TransactionType.WITHDRAWAL || tx.type === TransactionType.VIP_PURCHASE ? '-' : '+'}${tx.amount.toFixed(2)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-5">
+                        <span className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider ${
+                          tx.status === TransactionStatus.APPROVED ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                          tx.status === TransactionStatus.REJECTED ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
+                          'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
                         }`}>
                           {tx.status}
                         </span>
@@ -515,7 +557,9 @@ const Dashboard: React.FC = () => {
                   ))}
                   {userTransactions.length === 0 && (
                     <tr>
-                      <td colSpan={4} className="px-4 py-8 text-center text-gray-400">No transactions yet.</td>
+                      <td colSpan={4} className="px-6 py-20 text-center text-gray-400 dark:text-gray-600 font-bold italic">
+                        No activity detected in your account.
+                      </td>
                     </tr>
                   )}
                 </tbody>
