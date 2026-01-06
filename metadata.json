@@ -1,0 +1,7 @@
+{
+  "name": "SmartMine USD Platform",
+  "description": "A professional USD-based mining and earning platform featuring a secure user dashboard, VIP tiers, deposit/withdrawal systems, and a comprehensive admin control panel.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
