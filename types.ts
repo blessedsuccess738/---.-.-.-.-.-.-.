@@ -49,6 +49,25 @@ export interface User {
   createdAt: string;
 }
 
+export interface ChatMessage {
+  id: string;
+  senderId: string;
+  senderName: string;
+  text: string;
+  timestamp: string;
+  isAdmin: boolean;
+}
+
+export interface TokenAddress {
+  name: string;
+  address: string;
+}
+
+export interface DepositConfig {
+  mainAddress: string;
+  tokens: TokenAddress[];
+}
+
 export interface AppStats {
   totalUsers: number;
   totalDeposits: number;

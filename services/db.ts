@@ -1,12 +1,22 @@
 
-import { User, Transaction, UserRole } from '../types';
+import { User, Transaction, UserRole, ChatMessage, DepositConfig } from '../types';
 import { ADMIN_CONFIG } from '../constants';
 
 const DB_KEYS = {
   USERS: 'sm_users',
   TRANSACTIONS: 'sm_transactions',
   CURRENT_USER: 'sm_auth_user',
-  BROADCAST: 'sm_broadcast_msg'
+  BROADCAST: 'sm_broadcast_msg',
+  CHATS: 'sm_chats',
+  DEPOSIT_CONFIG: 'sm_deposit_config'
+};
+
+const DEFAULT_DEPOSIT_CONFIG: DepositConfig = {
+  mainAddress: 'TX47zQvT9KxL2mR5s8pB2vA9mX8wH6qZ3n',
+  tokens: [
+    { name: 'USDT (TRC-20)', address: 'TX47zQvT9KxL2mR5s8pB2vA9mX8wH6qZ3n' },
+    { name: 'USDC (ERC-20)', address: '0x742d35Cc6634C0532925a3b844Bc454e4438f44e' }
+  ]
 };
 
 export const db = {
@@ -51,6 +61,36 @@ export const db = {
     } else {
       localStorage.removeItem(DB_KEYS.BROADCAST);
     }
+  },
+
+  getChats: (userId: string): ChatMessage[] => {
+    const data = localStorage.getItem(`${DB_KEYS.CHATS}_${userId}`);
+    return data ? JSON.parse(data) : [];
+  },
+
+  getAllChatUserIds: (): string[] => {
+    const ids: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith(DB_KEYS.CHATS)) {
+        ids.push(key.replace(`${DB_KEYS.CHATS}_`, ''));
+      }
+    }
+    return ids;
+  },
+
+  addChatMessage: (userId: string, msg: ChatMessage) => {
+    const current = db.getChats(userId);
+    localStorage.setItem(`${DB_KEYS.CHATS}_${userId}`, JSON.stringify([...current, msg]));
+  },
+
+  getDepositConfig: (): DepositConfig => {
+    const data = localStorage.getItem(DB_KEYS.DEPOSIT_CONFIG);
+    return data ? JSON.parse(data) : DEFAULT_DEPOSIT_CONFIG;
+  },
+
+  setDepositConfig: (config: DepositConfig) => {
+    localStorage.setItem(DB_KEYS.DEPOSIT_CONFIG, JSON.stringify(config));
   },
 
   // Initialize Admin if not exists
