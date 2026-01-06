@@ -35,10 +35,22 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
     navigate('/');
   };
 
-  const isAuthPage = ['/', '/login', '/signup'].includes(location.pathname);
+  const isAuthPage = ['/login', '/signup'].includes(location.pathname);
+  const isWelcomePage = location.pathname === '/';
+
+  // Determine which video to play
+  let videoSrc = config.backgroundVideoUrl;
+  if (isAuthPage && config.authVideoUrl) {
+    videoSrc = config.authVideoUrl;
+  } else if (isWelcomePage && config.welcomeVideoUrl) {
+    // Welcome page handles its own video in Welcome.tsx for specific layering, 
+    // but we can also handle it here if preferred. 
+    // Currently Welcome.tsx has its own <video> tag for better control.
+    videoSrc = ''; 
+  }
 
   // Background Video Rendering
-  const backgroundVideo = config.backgroundVideoUrl ? (
+  const backgroundVideo = videoSrc ? (
     <div className="fixed inset-0 w-full h-full -z-10 overflow-hidden pointer-events-none">
       <video
         autoPlay
@@ -46,16 +58,16 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
         loop
         playsInline
         className="w-full h-full object-cover"
-        src={config.backgroundVideoUrl}
+        src={videoSrc}
       />
       {/* Overlay to ensure text readability */}
       <div className="absolute inset-0 bg-black/40 dark:bg-black/60 backdrop-blur-[2px]"></div>
     </div>
   ) : null;
 
-  if (isAuthPage) return (
+  if (isAuthPage || isWelcomePage) return (
     <div className="relative min-h-screen">
-      {backgroundVideo}
+      {!isWelcomePage && backgroundVideo}
       <button 
         onClick={toggleDarkMode}
         className="fixed top-4 right-4 z-[60] w-10 h-10 flex items-center justify-center rounded-full bg-white/20 backdrop-blur-md text-white border border-white/30 hover:bg-white/30 transition-all"

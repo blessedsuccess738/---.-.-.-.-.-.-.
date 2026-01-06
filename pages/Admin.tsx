@@ -1,8 +1,18 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { db } from '../services/db';
 import { User, Transaction, TransactionStatus, TransactionType, UserRole, ChatMessage, TokenAddress, DepositConfig } from '../types';
 import { VIP_LEVELS, ADMIN_CONFIG } from '../constants';
+
+const PREDEFINED_TOKENS = [
+  "USDT (TRC-20)", "USDT (ERC-20)", "USDT (BEP-20)", "E0 Token", "BTC (Bitcoin)", 
+  "ETH (Ethereum)", "SOL (Solana)", "USDC (USD Coin)", "BNB (Binance Coin)", "XRP (Ripple)", 
+  "ADA (Cardano)", "DOGE (Dogecoin)", "TRX (TRON)", "DOT (Polkadot)", "MATIC (Polygon)", 
+  "LTC (Litecoin)", "SHIB (Shiba Inu)", "DAI (Stablecoin)", "BCH (Bitcoin Cash)", "AVAX (Avalanche)", 
+  "LINK (Chainlink)", "ATOM (Cosmos)", "UNI (Uniswap)", "XMR (Monero)", "ETC (Ethereum Classic)", 
+  "TON (Toncoin)", "ICP (Internet Computer)", "FIL (Filecoin)", "NEAR (Near Protocol)", 
+  "ARB (Arbitrum)", "OP (Optimism)", "PEPE (Pepe Coin)"
+];
 
 const AdminPanel: React.FC = () => {
   const [users, setUsers] = useState<User[]>(db.getUsers());
@@ -15,10 +25,15 @@ const AdminPanel: React.FC = () => {
   // Payment Configuration State
   const [paymentConfig, setPaymentConfig] = useState<DepositConfig>(db.getDepositConfig());
   const [newTokens, setNewTokens] = useState<TokenAddress[]>(paymentConfig.tokens);
+  const [tokenSearch, setTokenSearch] = useState('');
+  const [showTokenSelector, setShowTokenSelector] = useState(false);
+
   const [tgSupport, setTgSupport] = useState(paymentConfig.telegramSupport || '');
   const [tgChannel, setTgChannel] = useState(paymentConfig.telegramChannel || '');
   const [miningVideo, setMiningVideo] = useState(paymentConfig.miningVideoUrl || '');
   const [bgVideo, setBgVideo] = useState(paymentConfig.backgroundVideoUrl || '');
+  const [welcomeVideo, setWelcomeVideo] = useState(paymentConfig.welcomeVideoUrl || '');
+  const [authVideo, setAuthVideo] = useState(paymentConfig.authVideoUrl || '');
   const [withdrawMaint, setWithdrawMaint] = useState(paymentConfig.withdrawalMaintenance || false);
 
   // Support Chat State
@@ -111,6 +126,8 @@ const AdminPanel: React.FC = () => {
       telegramChannel: tgChannel,
       miningVideoUrl: miningVideo,
       backgroundVideoUrl: bgVideo,
+      welcomeVideoUrl: welcomeVideo,
+      authVideoUrl: authVideo,
       withdrawalMaintenance: withdrawMaint
     });
     alert('Platform configuration updated successfully!');
@@ -122,13 +139,19 @@ const AdminPanel: React.FC = () => {
     setNewTokens(updated);
   };
 
-  const addTokenRow = () => {
-    if (newTokens.length >= 5) {
-      alert('Maximum 5 tokens reached.');
+  const addToken = (name: string) => {
+    if (newTokens.some(t => t.name === name)) {
+      alert(`${name} is already in the list.`);
       return;
     }
-    setNewTokens([...newTokens, { name: '', address: '' }]);
+    setNewTokens([...newTokens, { name, address: '' }]);
+    setShowTokenSelector(false);
+    setTokenSearch('');
   };
+
+  const filteredPredefined = useMemo(() => {
+    return PREDEFINED_TOKENS.filter(t => t.toLowerCase().includes(tokenSearch.toLowerCase()));
+  }, [tokenSearch]);
 
   const handleUpdateBroadcast = () => {
     db.setBroadcastMessage(broadcastInput);
@@ -142,7 +165,7 @@ const AdminPanel: React.FC = () => {
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
-        <h2 className="text-2xl font-black text-gray-800 dark:text-white uppercase tracking-tight text-gray-800 dark:text-white">Admin Control Panel</h2>
+        <h2 className="text-2xl font-black text-gray-800 dark:text-white uppercase tracking-tight">Admin Control Panel</h2>
       </div>
 
       <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
@@ -186,8 +209,8 @@ const AdminPanel: React.FC = () => {
 
           {activeView === 'support' && (
             <div className="grid grid-cols-1 md:grid-cols-12 gap-6 h-[600px]">
-              <div className="md:col-span-4 border-r border-gray-100 dark:border-gray-800 pr-4 overflow-y-auto space-y-2">
-                <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-4 text-left">Active Conversations</h4>
+              <div className="md:col-span-4 border-r border-gray-100 dark:border-gray-800 pr-4 overflow-y-auto space-y-2 text-left">
+                <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-4">Active Conversations</h4>
                 {chatUserIds.map(uid => {
                   const chatUser = users.find(u => u.id === uid);
                   const lastMsg = db.getChats(uid).slice(-1)[0];
@@ -200,14 +223,13 @@ const AdminPanel: React.FC = () => {
                       <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${selectedChatUserId === uid ? 'bg-white/20' : 'bg-blue-600 text-white'}`}>
                         {chatUser?.username.charAt(0).toUpperCase() || 'U'}
                       </div>
-                      <div className="flex-1 min-w-0 text-left">
+                      <div className="flex-1 min-w-0">
                         <div className={`font-black text-sm truncate ${selectedChatUserId === uid ? 'text-white' : 'text-gray-800 dark:text-white'}`}>{chatUser?.username || 'Unknown User'}</div>
                         <div className={`text-[10px] truncate ${selectedChatUserId === uid ? 'text-white/80' : 'text-gray-400'}`}>{lastMsg?.text || 'No messages'}</div>
                       </div>
                     </button>
                   );
                 })}
-                {chatUserIds.length === 0 && <p className="text-center py-20 text-xs text-gray-400 italic">No user chats found.</p>}
               </div>
               <div className="md:col-span-8 flex flex-col h-full overflow-hidden bg-gray-50 dark:bg-gray-950 rounded-3xl border border-gray-100 dark:border-gray-800">
                 {selectedChatUserId ? (
@@ -236,13 +258,12 @@ const AdminPanel: React.FC = () => {
           )}
 
           {activeView === 'payments' && (
-            <div className="max-w-4xl mx-auto space-y-10 py-4">
+            <div className="max-w-4xl mx-auto space-y-10 py-4 text-left">
               <div className="bg-blue-50 dark:bg-blue-900/10 p-8 rounded-[2.5rem] border border-blue-100 dark:border-blue-900/30">
-                <h4 className="text-sm font-black text-blue-700 uppercase tracking-widest mb-6 flex items-center gap-2"><i className="fa-solid fa-wallet text-blue-600"></i> Global Settings & Payments</h4>
+                <h4 className="text-sm font-black text-blue-700 uppercase tracking-widest mb-6 flex items-center gap-2"><i className="fa-solid fa-gear text-blue-600"></i> Global Configuration</h4>
                 
-                {/* Global Maintenance & Theme Toggles */}
-                <div className="bg-white dark:bg-gray-800/40 p-6 rounded-3xl border border-blue-100 dark:border-blue-800/50 mb-10 text-left">
-                  <h5 className="text-[10px] font-black uppercase text-gray-400 mb-6 tracking-widest border-b pb-2">Platform Control</h5>
+                <div className="bg-white dark:bg-gray-800/40 p-6 rounded-3xl border border-blue-100 dark:border-blue-800/50 mb-10">
+                  <h5 className="text-[10px] font-black uppercase text-gray-400 mb-6 tracking-widest border-b pb-2">Platform Controls</h5>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div className="flex items-center justify-between bg-orange-50 dark:bg-orange-950/20 p-5 rounded-2xl border border-orange-100 dark:border-orange-900/50">
                       <div>
@@ -258,24 +279,68 @@ const AdminPanel: React.FC = () => {
                     </div>
                     
                     <div>
-                      <label className="block text-[10px] font-black uppercase text-gray-400 mb-2 tracking-widest">Global Background Video Link</label>
+                      <label className="block text-[10px] font-black uppercase text-gray-400 mb-2 tracking-widest">Global Dashboard Video Link</label>
                       <div className="relative">
                         <i className="fa-solid fa-play absolute left-4 top-1/2 -translate-y-1/2 text-blue-600"></i>
                         <input 
                           type="text" 
-                          className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-medium dark:text-white"
+                          className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-medium dark:text-white outline-none"
                           value={bgVideo}
                           onChange={(e) => setBgVideo(e.target.value)}
-                          placeholder="Direct MP4 URL for background"
+                          placeholder="Dashboard MP4 URL"
                         />
                       </div>
-                      <p className="mt-2 text-[10px] text-gray-400 italic">Overrides default theme colors with a cinematic video background.</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white dark:bg-gray-800/40 p-6 rounded-3xl border border-blue-100 dark:border-blue-800/50 mb-10">
+                  <h5 className="text-[10px] font-black uppercase text-gray-400 mb-6 tracking-widest border-b pb-2">Screen Media Links</h5>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div>
+                      <label className="block text-[10px] font-black uppercase text-gray-400 mb-2 tracking-widest">Welcome Screen Video</label>
+                      <div className="relative">
+                        <i className="fa-solid fa-clapperboard absolute left-4 top-1/2 -translate-y-1/2 text-blue-600"></i>
+                        <input 
+                          type="text" 
+                          className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-medium dark:text-white outline-none"
+                          value={welcomeVideo}
+                          onChange={(e) => setWelcomeVideo(e.target.value)}
+                          placeholder="Welcome MP4"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black uppercase text-gray-400 mb-2 tracking-widest">Login/Signup Video</label>
+                      <div className="relative">
+                        <i className="fa-solid fa-key absolute left-4 top-1/2 -translate-y-1/2 text-blue-600"></i>
+                        <input 
+                          type="text" 
+                          className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-medium dark:text-white outline-none"
+                          value={authVideo}
+                          onChange={(e) => setAuthVideo(e.target.value)}
+                          placeholder="Auth MP4 URL"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black uppercase text-gray-400 mb-2 tracking-widest">Mining Farm Video</label>
+                      <div className="relative">
+                        <i className="fa-solid fa-video absolute left-4 top-1/2 -translate-y-1/2 text-blue-600"></i>
+                        <input 
+                          type="text" 
+                          className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-medium dark:text-white outline-none"
+                          value={miningVideo}
+                          onChange={(e) => setMiningVideo(e.target.value)}
+                          placeholder="Mining Farm MP4"
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
 
                 {/* Telegram Links Configuration */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10 text-left">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
                   <div>
                     <label className="block text-[10px] font-black uppercase text-gray-400 mb-2 tracking-widest">Telegram Support Link</label>
                     <div className="relative">
@@ -304,40 +369,79 @@ const AdminPanel: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Video URL Configuration */}
-                <div className="mb-10 text-left">
-                  <label className="block text-[10px] font-black uppercase text-gray-400 mb-2 tracking-widest">Mining Farm Video URL (Dashboard Preview)</label>
-                  <div className="relative">
-                    <i className="fa-solid fa-video absolute left-4 top-1/2 -translate-y-1/2 text-blue-600"></i>
-                    <input 
-                      type="text" 
-                      className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-medium dark:text-white"
-                      value={miningVideo}
-                      onChange={(e) => setMiningVideo(e.target.value)}
-                      placeholder="https://example.com/mining.mp4"
-                    />
+                {/* Deposit Token Configuration */}
+                <div className="space-y-6">
+                  <h5 className="text-[10px] font-black uppercase text-gray-400 mb-4 tracking-widest border-b pb-2 flex justify-between items-center">
+                    Deposit Assets Management
+                    <button 
+                      onClick={() => setShowTokenSelector(!showTokenSelector)}
+                      className="text-blue-600 hover:text-blue-700 font-black text-xs uppercase"
+                    >
+                      {showTokenSelector ? 'Close Selector' : '+ Add Token'}
+                    </button>
+                  </h5>
+
+                  {showTokenSelector && (
+                    <div className="p-6 bg-white dark:bg-gray-800 rounded-3xl border border-blue-100 dark:border-blue-800 shadow-xl animate-in fade-in zoom-in duration-200">
+                      <label className="block text-[10px] font-black uppercase text-gray-400 mb-3 tracking-widest">Search & Add Asset</label>
+                      <input 
+                        type="text" 
+                        placeholder="Search among all tokens..." 
+                        className="w-full px-4 py-3 rounded-2xl bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700 text-sm outline-none focus:ring-2 focus:ring-blue-500 mb-4 dark:text-white"
+                        value={tokenSearch}
+                        onChange={(e) => setTokenSearch(e.target.value)}
+                      />
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-2 scrollbar-hide">
+                        {filteredPredefined.map(name => (
+                          <button 
+                            key={name}
+                            onClick={() => addToken(name)}
+                            className="text-left px-4 py-2 rounded-xl text-[10px] font-black uppercase border border-gray-100 dark:border-gray-800 hover:bg-blue-600 hover:text-white transition-all truncate"
+                          >
+                            {name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="space-y-4">
+                    {newTokens.map((token, idx) => (
+                      <div key={idx} className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end bg-white dark:bg-gray-800 p-6 rounded-3xl border border-gray-100 dark:border-gray-700 shadow-sm relative group">
+                        <div className="md:col-span-3">
+                          <label className="block text-[10px] font-black uppercase text-gray-400 mb-1 tracking-widest">Token Name</label>
+                          <div className="px-4 py-2 rounded-xl bg-gray-50 dark:bg-gray-900 text-xs font-black text-blue-600 dark:text-blue-400 border border-gray-100 dark:border-gray-800 uppercase">
+                            {token.name}
+                          </div>
+                        </div>
+                        <div className="md:col-span-7">
+                          <label className="block text-[10px] font-black uppercase text-gray-400 mb-1 tracking-widest">Company Wallet Address</label>
+                          <input 
+                            type="text" 
+                            className="w-full px-4 py-2 rounded-xl border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-[10px] font-mono dark:text-white outline-none focus:ring-2 focus:ring-blue-500" 
+                            value={token.address} 
+                            onChange={(e) => handleTokenChange(idx, 'address', e.target.value)} 
+                            placeholder={`Enter ${token.name} Address`} 
+                          />
+                        </div>
+                        <div className="md:col-span-2">
+                          <button 
+                            onClick={() => setNewTokens(newTokens.filter((_, i) => i !== idx))} 
+                            className="w-full py-2 bg-red-50 text-red-600 rounded-xl text-xs hover:bg-red-100 transition-all font-black uppercase"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    {newTokens.length === 0 && (
+                      <div className="py-12 text-center text-gray-400 italic text-xs border-2 border-dashed border-gray-100 dark:border-gray-800 rounded-3xl">
+                        No tokens configured for deposit yet. Use the selector above to add assets.
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                <div className="space-y-6">
-                  <h5 className="text-[10px] font-black uppercase text-gray-400 mb-4 tracking-widest border-b pb-2 text-left">Deposit Tokens</h5>
-                  {newTokens.map((token, idx) => (
-                    <div key={idx} className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end bg-white dark:bg-gray-800 p-6 rounded-3xl border border-gray-100 dark:border-gray-700 shadow-sm text-left">
-                      <div className="md:col-span-3">
-                        <label className="block text-[10px] font-black uppercase text-gray-400 mb-1 tracking-widest">Token Name</label>
-                        <input type="text" className="w-full px-4 py-2 rounded-xl border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-sm font-bold dark:text-white" value={token.name} onChange={(e) => handleTokenChange(idx, 'name', e.target.value)} placeholder="e.g. USDT (TRC-20)" />
-                      </div>
-                      <div className="md:col-span-7">
-                        <label className="block text-[10px] font-black uppercase text-gray-400 mb-1 tracking-widest">Wallet Address</label>
-                        <input type="text" className="w-full px-4 py-2 rounded-xl border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-sm font-mono dark:text-white" value={token.address} onChange={(e) => handleTokenChange(idx, 'address', e.target.value)} placeholder="Wallet Address" />
-                      </div>
-                      <div className="md:col-span-2 flex gap-2">
-                        <button onClick={() => setNewTokens(newTokens.filter((_, i) => i !== idx))} className="w-full py-2 bg-red-50 text-red-600 rounded-xl text-xs hover:bg-red-100 transition-all"><i className="fa-solid fa-trash"></i></button>
-                      </div>
-                    </div>
-                  ))}
-                  <button onClick={addTokenRow} disabled={newTokens.length >= 5} className="w-full py-4 border-2 border-dashed border-blue-200 text-blue-600 rounded-2xl text-xs font-black uppercase hover:bg-blue-50 transition-all disabled:opacity-50">+ Add Custom Token Address</button>
-                </div>
                 <div className="mt-10 flex gap-4">
                   <button onClick={savePaymentConfig} className="flex-1 py-5 bg-blue-600 text-white rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-blue-500/20 active:scale-95 text-white">Save All Configuration</button>
                   <button onClick={() => {
@@ -347,6 +451,8 @@ const AdminPanel: React.FC = () => {
                     setTgChannel(cfg.telegramChannel || '');
                     setMiningVideo(cfg.miningVideoUrl || '');
                     setBgVideo(cfg.backgroundVideoUrl || '');
+                    setWelcomeVideo(cfg.welcomeVideoUrl || '');
+                    setAuthVideo(cfg.authVideoUrl || '');
                     setWithdrawMaint(cfg.withdrawalMaintenance || false);
                   }} className="px-8 py-5 bg-gray-100 text-gray-600 rounded-2xl font-black uppercase tracking-widest active:scale-95">Reset</button>
                 </div>
@@ -355,9 +461,9 @@ const AdminPanel: React.FC = () => {
           )}
 
           {activeView === 'deposits' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-left">
               {pendingDeposits.map(tx => (
-                <div key={tx.id} className="bg-gray-50 dark:bg-gray-800/30 p-6 rounded-3xl border border-gray-100 dark:border-gray-800 flex flex-col text-left shadow-sm">
+                <div key={tx.id} className="bg-gray-50 dark:bg-gray-800/30 p-6 rounded-3xl border border-gray-100 dark:border-gray-800 flex flex-col shadow-sm">
                   <div className="flex justify-between mb-4">
                     <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">{tx.id}</span>
                     <span className="text-[10px] text-gray-400">{new Date(tx.date).toLocaleString()}</span>
@@ -391,9 +497,9 @@ const AdminPanel: React.FC = () => {
           )}
 
           {activeView === 'withdrawals' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-left">
               {pendingWithdrawals.map(tx => (
-                <div key={tx.id} className="bg-gray-50 dark:bg-gray-800/30 p-6 rounded-3xl border border-gray-100 dark:border-gray-800 flex flex-col text-left shadow-sm">
+                <div key={tx.id} className="bg-gray-50 dark:bg-gray-800/30 p-6 rounded-3xl border border-gray-100 dark:border-gray-800 flex flex-col shadow-sm">
                   <div className="flex justify-between mb-4">
                     <span className="text-[10px] font-black text-orange-600 uppercase tracking-widest">{tx.id}</span>
                     <span className="text-[10px] text-gray-400">{new Date(tx.date).toLocaleString()}</span>
@@ -412,9 +518,9 @@ const AdminPanel: React.FC = () => {
           )}
 
           {activeView === 'broadcast' && (
-            <div className="max-w-2xl mx-auto py-8">
+            <div className="max-w-2xl mx-auto py-8 text-left">
               <div className="bg-blue-50 dark:bg-blue-900/10 p-8 rounded-[2.5rem] border border-blue-100 dark:border-blue-900/30">
-                <h4 className="text-sm font-black text-blue-700 uppercase tracking-widest mb-4 text-left">Send Global Announcement</h4>
+                <h4 className="text-sm font-black text-blue-700 uppercase tracking-widest mb-4">Send Global Announcement</h4>
                 <textarea className="w-full h-40 p-5 rounded-3xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 outline-none text-sm font-medium resize-none shadow-sm dark:text-white" placeholder="Enter message for all users..." value={broadcastInput} onChange={(e) => setBroadcastInput(e.target.value)} />
                 <div className="mt-6 flex gap-3">
                   <button onClick={handleUpdateBroadcast} className="flex-1 py-4 bg-blue-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl shadow-blue-500/20 active:scale-95 text-white">Push Broadcast</button>
@@ -426,10 +532,10 @@ const AdminPanel: React.FC = () => {
         </div>
       </div>
 
-      {/* Fullscreen Image Viewer Modal */}
+      {/* Fullscreen Receipt Modal */}
       {viewingReceiptUrl && (
         <div className="fixed inset-0 bg-black/95 z-[200] flex flex-col items-center justify-center p-4" onClick={() => setViewingReceiptUrl(null)}>
-          <div className="absolute top-6 right-6 flex gap-4">
+          <div className="absolute top-6 right-6">
             <button className="w-12 h-12 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center backdrop-blur-md">
               <i className="fa-solid fa-xmark"></i>
             </button>

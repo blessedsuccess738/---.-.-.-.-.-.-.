@@ -1,9 +1,18 @@
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { db } from '../services/db';
 import { User, VIPLevel, TransactionType, TransactionStatus, Transaction, ChatMessage } from '../types';
 import { VIP_LEVELS, MINING_CYCLE_HOURS, MIN_WITHDRAWAL } from '../constants';
+
+const WITHDRAW_TOKENS = [
+  "USDT (TRC-20)", "E0 Token", "BTC (Bitcoin)", "ETH (Ethereum)", "SOL (Solana)",
+  "USDC (USD Coin)", "BNB (Binance Coin)", "XRP (Ripple)", "ADA (Cardano)", "DOGE (Dogecoin)",
+  "TRX (TRON)", "DOT (Polkadot)", "MATIC (Polygon)", "LTC (Litecoin)", "SHIB (Shiba Inu)",
+  "DAI (Stablecoin)", "BCH (Bitcoin Cash)", "AVAX (Avalanche)", "LINK (Chainlink)", "ATOM (Cosmos)",
+  "UNI (Uniswap)", "XMR (Monero)", "ETC (Ethereum Classic)", "TON (Toncoin)", "ICP (Internet Computer)",
+  "FIL (Filecoin)", "NEAR (Near Protocol)", "ARB (Arbitrum)", "OP (Optimism)", "PEPE (Pepe Coin)"
+];
 
 const Dashboard: React.FC = () => {
   const location = useLocation();
@@ -31,7 +40,10 @@ const Dashboard: React.FC = () => {
   // Form states
   const [depositAmount, setDepositAmount] = useState('');
   const [withdrawAmount, setWithdrawAmount] = useState('');
-  const [withdrawMethod, setWithdrawMethod] = useState('');
+  const [withdrawAddress, setWithdrawAddress] = useState('');
+  const [selectedWithdrawMethod, setSelectedWithdrawMethod] = useState('USDT (TRC-20)');
+  const [tokenSearch, setTokenSearch] = useState('');
+  const [depositTokenSearch, setDepositTokenSearch] = useState('');
   const [selectedTokenIndex, setSelectedTokenIndex] = useState(0);
 
   // Deposit Multi-step state
@@ -50,6 +62,33 @@ const Dashboard: React.FC = () => {
   // Derived state
   const currentVIP = VIP_LEVELS.find(v => v.id === user?.activeVipId);
 
+  // Address Validation Logic
+  const isAddressValid = useMemo(() => {
+    const addr = withdrawAddress.trim();
+    if (!addr) return false;
+    
+    // TRC-20 Validation
+    if (selectedWithdrawMethod.includes('TRC-20')) {
+      return /^T[a-zA-Z0-9]{33}$/.test(addr);
+    }
+    
+    // E0 Token Validation (Custom rule: alphanumeric, 30-50 chars)
+    if (selectedWithdrawMethod === 'E0 Token') {
+      return /^[a-zA-Z0-9]{30,50}$/.test(addr);
+    }
+
+    // Generic fallback for other 28 tokens: common crypto address check (minimal length)
+    return addr.length >= 26 && addr.length <= 100;
+  }, [withdrawAddress, selectedWithdrawMethod]);
+
+  const filteredWithdrawTokens = useMemo(() => {
+    return WITHDRAW_TOKENS.filter(t => t.toLowerCase().includes(tokenSearch.toLowerCase()));
+  }, [tokenSearch]);
+
+  const filteredDepositTokens = useMemo(() => {
+    return depositConfig.tokens.filter(t => t.name.toLowerCase().includes(depositTokenSearch.toLowerCase()));
+  }, [depositTokenSearch, depositConfig.tokens]);
+
   const refreshData = useCallback(() => {
     const currentUser = db.getCurrentUser();
     if (currentUser) {
@@ -63,7 +102,6 @@ const Dashboard: React.FC = () => {
     }
     const newBroadcast = db.getBroadcastMessage();
     setBroadcastMsg(newBroadcast);
-    // If the message has changed and it wasn't the one we dismissed, show it
     const lastDismissed = localStorage.getItem('sm_dismissed_broadcast');
     if (newBroadcast !== lastDismissed) {
       setIsBroadcastDismissed(false);
@@ -259,7 +297,7 @@ const Dashboard: React.FC = () => {
 
   const handleWithdraw = (e: React.FormEvent) => {
     e.preventDefault();
-    if (depositConfig.withdrawalMaintenance) return; // Prevention
+    if (depositConfig.withdrawalMaintenance) return;
     const amount = parseFloat(withdrawAmount);
     if (!user || !amount || amount < MIN_WITHDRAWAL) {
       setMessage({ type: 'error', text: `Minimum withdrawal is $${MIN_WITHDRAWAL}` });
@@ -269,6 +307,11 @@ const Dashboard: React.FC = () => {
       setMessage({ type: 'error', text: 'Insufficient balance' });
       return;
     }
+    if (!isAddressValid) {
+      setMessage({ type: 'error', text: `Invalid ${selectedWithdrawMethod} address format.` });
+      return;
+    }
+
     const transactions = db.getTransactions();
     const newTx: Transaction = {
       id: `WD-${Date.now()}`,
@@ -277,12 +320,13 @@ const Dashboard: React.FC = () => {
       type: TransactionType.WITHDRAWAL,
       status: TransactionStatus.PENDING,
       date: new Date().toISOString(),
-      method: withdrawMethod || 'Generic',
-      description: 'User withdrawal request'
+      method: `${selectedWithdrawMethod}: ${withdrawAddress}`,
+      description: `Withdrawal via ${selectedWithdrawMethod}`
     };
     db.setTransactions([newTx, ...transactions]);
     setMessage({ type: 'success', text: 'Withdrawal request submitted for review.' });
     setWithdrawAmount('');
+    setWithdrawAddress('');
     setActiveTab('overview');
   };
 
@@ -303,9 +347,9 @@ const Dashboard: React.FC = () => {
           <div className="bg-amber-200 dark:bg-amber-800 text-amber-700 dark:text-amber-400 p-2 rounded-xl mr-4 shrink-0">
             <i className="fa-solid fa-bullhorn"></i>
           </div>
-          <div className="flex-1">
+          <div className="flex-1 text-left">
             <h4 className="text-[10px] font-black uppercase tracking-widest text-amber-700 dark:text-amber-500 mb-1">Official Announcement</h4>
-            <p className="text-sm font-medium text-amber-900 dark:text-amber-100 leading-relaxed text-left">{broadcastMsg}</p>
+            <p className="text-sm font-medium text-amber-900 dark:text-amber-100 leading-relaxed">{broadcastMsg}</p>
           </div>
           <button 
             onClick={dismissBroadcast} 
@@ -367,7 +411,7 @@ const Dashboard: React.FC = () => {
 
       {message && (
         <div className={`p-4 rounded-2xl flex items-center justify-between border transition-all ${message.type === 'success' ? 'bg-green-50 text-green-700 border-green-100 dark:bg-green-900/20 dark:text-green-400 dark:border-green-800/50' : 'bg-red-50 text-red-700 border-red-100 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800/50'}`}>
-          <div className="flex items-center"><i className={`fa-solid ${message.type === 'success' ? 'fa-circle-check' : 'fa-circle-xmark'} mr-3`}></i><span className="text-sm font-semibold">{message.text}</span></div>
+          <div className="flex items-center text-left"><i className={`fa-solid ${message.type === 'success' ? 'fa-circle-check' : 'fa-circle-xmark'} mr-3`}></i><span className="text-sm font-semibold">{message.text}</span></div>
           <button onClick={() => setMessage(null)} className="p-1">&times;</button>
         </div>
       )}
@@ -468,7 +512,7 @@ const Dashboard: React.FC = () => {
                     onClick={() => { if(parseFloat(depositAmount) > 0) setDepositStep('payment'); }}
                     className="w-full py-5 bg-blue-600 text-white font-black rounded-2xl shadow-xl shadow-blue-500/20 active:scale-95"
                   >
-                    Make Payment
+                    Select Payment Method
                   </button>
                 </div>
               )}
@@ -476,31 +520,61 @@ const Dashboard: React.FC = () => {
               {depositStep === 'payment' && (
                 <div className="space-y-8 animate-in slide-in-from-right-4 duration-300">
                   <div className="bg-blue-600 rounded-3xl p-8 text-white text-center shadow-xl shadow-blue-500/20">
-                    <p className="text-[10px] font-black uppercase tracking-widest opacity-80 mb-4">Select Payment Token</p>
-                    <div className="flex flex-wrap justify-center gap-2 mb-8">
-                      {depositConfig.tokens.map((token, idx) => (
-                        <button 
-                          key={idx} 
-                          onClick={() => setSelectedTokenIndex(idx)}
-                          className={`px-4 py-2 rounded-full text-xs font-black uppercase transition-all ${selectedTokenIndex === idx ? 'bg-white text-blue-600' : 'bg-white/10 hover:bg-white/20'}`}
-                        >
-                          {token.name}
-                        </button>
-                      ))}
+                    <p className="text-[10px] font-black uppercase tracking-widest opacity-80 mb-4">Choose Payment Asset</p>
+                    
+                    {/* Searchable Token Selector for Deposits */}
+                    <div className="mb-6 relative">
+                       <input 
+                        type="text" 
+                        placeholder="Search assets..." 
+                        className="w-full px-4 py-2 rounded-xl bg-white/10 border border-white/20 text-xs text-white placeholder:text-white/60 outline-none focus:bg-white/20 transition-all"
+                        value={depositTokenSearch}
+                        onChange={(e) => setDepositTokenSearch(e.target.value)}
+                       />
+                       <div className="mt-3 flex flex-wrap justify-center gap-2 max-h-32 overflow-y-auto scrollbar-hide">
+                        {filteredDepositTokens.map((token, idx) => (
+                          <button 
+                            key={idx} 
+                            onClick={() => setSelectedTokenIndex(depositConfig.tokens.indexOf(token))}
+                            className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase transition-all ${depositConfig.tokens.indexOf(token) === selectedTokenIndex ? 'bg-white text-blue-600' : 'bg-white/10 hover:bg-white/20 text-white'}`}
+                          >
+                            {token.name}
+                          </button>
+                        ))}
+                        {filteredDepositTokens.length === 0 && <p className="text-[10px] opacity-60">No matching assets found</p>}
+                       </div>
                     </div>
-                    <h4 className="text-sm font-bold opacity-80 mb-2">Deposit Address ({depositConfig.tokens[selectedTokenIndex]?.name})</h4>
-                    <div className="bg-white/10 p-5 rounded-2xl font-mono text-xs break-all border border-white/20 select-all cursor-copy mb-4" onClick={() => {
-                      navigator.clipboard.writeText(depositConfig.tokens[selectedTokenIndex]?.address || '');
-                      alert('Address copied!');
-                    }}>
-                      {depositConfig.tokens[selectedTokenIndex]?.address || 'No Address Set'}
+
+                    <div className="p-4 bg-white/5 rounded-2xl border border-white/10 mb-8 text-left">
+                       <div className="flex justify-between items-center mb-3">
+                          <span className="text-[10px] font-black uppercase tracking-widest opacity-60">Selected:</span>
+                          <span className="text-xs font-black uppercase text-white">{depositConfig.tokens[selectedTokenIndex]?.name}</span>
+                       </div>
+                       <div className="bg-white/10 p-4 rounded-xl font-mono text-[10px] break-all border border-white/10 select-all cursor-copy mb-2" onClick={() => {
+                        navigator.clipboard.writeText(depositConfig.tokens[selectedTokenIndex]?.address || '');
+                        alert('Address copied!');
+                       }}>
+                        {depositConfig.tokens[selectedTokenIndex]?.address || 'Admin hasn\'t set this address yet'}
+                       </div>
+                       <p className="text-[8px] font-bold opacity-50 text-center uppercase tracking-widest">Click address to copy</p>
                     </div>
-                    <p className="text-[10px] font-bold opacity-70">Transfer exactly <span className="underline">${parseFloat(depositAmount).toFixed(2)}</span> to this address.</p>
+
+                    <div className="space-y-1">
+                       <p className="text-[10px] font-bold opacity-70">Transfer exactly</p>
+                       <p className="text-3xl font-black underline decoration-white/30 decoration-2 underline-offset-4">${parseFloat(depositAmount).toFixed(2)} USD</p>
+                       <p className="text-[10px] font-bold opacity-70">to the address above</p>
+                    </div>
                   </div>
 
                   <div className="space-y-3">
                     <button 
-                      onClick={() => setDepositStep('receipt')}
+                      onClick={() => {
+                         if (!depositConfig.tokens[selectedTokenIndex]?.address) {
+                            alert('This payment method is currently unavailable. Select another asset.');
+                         } else {
+                            setDepositStep('receipt');
+                         }
+                      }}
                       className="w-full py-5 bg-blue-600 text-white font-black rounded-2xl shadow-xl shadow-blue-500/20 active:scale-95"
                     >
                       I have made payment
@@ -577,17 +651,89 @@ const Dashboard: React.FC = () => {
                     <p className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-2">Available Balance</p>
                     <p className="text-4xl font-black text-gray-800 dark:text-white">${user?.walletBalance.toFixed(2)}</p>
                   </div>
-                  <form onSubmit={handleWithdraw} className="space-y-6">
-                    <div>
-                      <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Withdraw Amount (USD)</label>
-                      <input type="number" required min={MIN_WITHDRAWAL} max={user?.walletBalance} className="w-full px-5 py-4 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 font-bold dark:text-white outline-none focus:ring-2 focus:ring-blue-500" value={withdrawAmount} onChange={(e) => setWithdrawAmount(e.target.value)} placeholder={`Min $${MIN_WITHDRAWAL}`} />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Wallet Address (TRC-20)</label>
-                      <input type="text" required className="w-full px-5 py-4 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 font-mono dark:text-white outline-none focus:ring-2 focus:ring-blue-500" value={withdrawMethod} onChange={(e) => setWithdrawMethod(e.target.value)} placeholder="T..." />
-                    </div>
-                    <button type="submit" className="w-full py-5 bg-blue-600 text-white font-black rounded-2xl active:scale-95 shadow-lg shadow-blue-500/20">Request Withdrawal</button>
-                  </form>
+                  
+                  <div className="bg-white/50 dark:bg-gray-800/50 p-6 rounded-3xl border border-gray-100 dark:border-gray-800">
+                    <h4 className="text-sm font-black uppercase tracking-widest text-gray-500 mb-6">Withdrawal Setup</h4>
+                    <form onSubmit={handleWithdraw} className="space-y-6">
+                      <div>
+                        <label className="block text-xs font-black uppercase text-gray-400 mb-2 tracking-widest">Select Asset to Sell</label>
+                        <div className="relative group">
+                          <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+                            <i className="fa-solid fa-magnifying-glass"></i>
+                          </div>
+                          <input 
+                            type="text"
+                            placeholder="Search among 30 tokens..."
+                            className="w-full pl-10 pr-4 py-3 rounded-t-2xl border-x border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 text-xs font-medium outline-none focus:ring-2 focus:ring-blue-500 transition-all dark:text-white"
+                            value={tokenSearch}
+                            onChange={(e) => setTokenSearch(e.target.value)}
+                          />
+                          <div className="max-h-48 overflow-y-auto border border-gray-200 dark:border-gray-800 rounded-b-2xl bg-white dark:bg-gray-950 scrollbar-hide">
+                            {filteredWithdrawTokens.length > 0 ? (
+                              filteredWithdrawTokens.map(token => (
+                                <button
+                                  key={token}
+                                  type="button"
+                                  onClick={() => setSelectedWithdrawMethod(token)}
+                                  className={`w-full text-left px-4 py-3 text-xs font-bold transition-colors border-b border-gray-50 dark:border-gray-800 last:border-0 ${selectedWithdrawMethod === token ? 'bg-blue-600 text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-900'}`}
+                                >
+                                  {token} {selectedWithdrawMethod === token && <i className="fa-solid fa-check float-right"></i>}
+                                </button>
+                              ))
+                            ) : (
+                              <div className="p-4 text-center text-gray-400 text-xs italic">No matching tokens found.</div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="p-4 bg-blue-50 dark:bg-blue-900/10 rounded-2xl border border-blue-100 dark:border-blue-800">
+                         <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-black uppercase text-blue-700 dark:text-blue-400">Selected Asset</span>
+                            <span className="text-sm font-black text-blue-900 dark:text-blue-100 uppercase">{selectedWithdrawMethod}</span>
+                         </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-black uppercase text-gray-400 mb-2 tracking-widest">Amount to Withdraw (USD)</label>
+                        <input 
+                          type="number" 
+                          required 
+                          min={MIN_WITHDRAWAL} 
+                          max={user?.walletBalance} 
+                          className="w-full px-5 py-4 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 font-bold dark:text-white outline-none focus:ring-2 focus:ring-blue-500" 
+                          value={withdrawAmount} 
+                          onChange={(e) => setWithdrawAmount(e.target.value)} 
+                          placeholder={`Min $${MIN_WITHDRAWAL}`} 
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-black uppercase text-gray-400 mb-2 tracking-widest">
+                          {selectedWithdrawMethod} Destination Address
+                        </label>
+                        <input 
+                          type="text" 
+                          required 
+                          className={`w-full px-5 py-4 rounded-2xl border bg-white dark:bg-gray-900 font-mono dark:text-white outline-none focus:ring-2 transition-all ${withdrawAddress && !isAddressValid ? 'border-red-500 focus:ring-red-500' : 'border-gray-200 dark:border-gray-800 focus:ring-blue-500'}`} 
+                          value={withdrawAddress} 
+                          onChange={(e) => setWithdrawAddress(e.target.value)} 
+                          placeholder={selectedWithdrawMethod.includes('TRC-20') ? "Starts with T (34 chars)..." : `Enter ${selectedWithdrawMethod} wallet address...`} 
+                        />
+                        {withdrawAddress && !isAddressValid && (
+                          <p className="mt-2 text-[10px] font-bold text-red-500 uppercase tracking-widest">Invalid {selectedWithdrawMethod} address format</p>
+                        )}
+                      </div>
+
+                      <button 
+                        type="submit" 
+                        disabled={!isAddressValid || !withdrawAmount || parseFloat(withdrawAmount) < MIN_WITHDRAWAL}
+                        className="w-full py-5 bg-blue-600 text-white font-black rounded-2xl active:scale-95 shadow-lg shadow-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:grayscale transition-all"
+                      >
+                        {isAddressValid ? 'Request Payout' : 'Input Valid Address to Continue'}
+                      </button>
+                    </form>
+                  </div>
                 </>
               )}
             </div>
@@ -648,7 +794,7 @@ const Dashboard: React.FC = () => {
             <div className="flex flex-col items-center text-center">
               <div className="w-24 h-24 bg-blue-600 text-white rounded-[2rem] flex items-center justify-center text-4xl mb-8 shadow-xl shadow-blue-500/20 rotate-6 transition-transform hover:rotate-0"><i className="fa-solid fa-hand-sparkles"></i></div>
               <h3 className="text-4xl font-black text-gray-900 dark:text-white mb-6 uppercase tracking-tight">Welcome to SmartMine</h3>
-              <p className="text-lg text-gray-600 dark:text-gray-400 mb-8 leading-relaxed font-medium">
+              <p className="text-lg text-gray-600 dark:text-gray-400 mb-8 leading-relaxed font-medium text-center">
                 Welcome to the future of smart earning! SmartMine allows you to rent computational hashing power to earn USD daily.
               </p>
               

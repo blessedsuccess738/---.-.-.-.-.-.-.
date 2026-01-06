@@ -19,8 +19,10 @@ const DEFAULT_DEPOSIT_CONFIG: DepositConfig = {
   ],
   telegramSupport: 'https://t.me/SmartMineSupport',
   telegramChannel: 'https://t.me/SmartMineNews',
-  miningVideoUrl: 'https://www.w3schools.com/html/mov_bbb.mp4', // Dashboard overview video
-  backgroundVideoUrl: '', // Global background video
+  miningVideoUrl: 'https://www.w3schools.com/html/mov_bbb.mp4', 
+  backgroundVideoUrl: '', 
+  welcomeVideoUrl: 'https://www.w3schools.com/html/movie.mp4',
+  authVideoUrl: 'https://www.w3schools.com/html/movie.mp4',
   withdrawalMaintenance: false
 };
 

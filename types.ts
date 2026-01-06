@@ -70,6 +70,8 @@ export interface DepositConfig {
   telegramChannel?: string;
   miningVideoUrl?: string;
   backgroundVideoUrl?: string;
+  welcomeVideoUrl?: string;
+  authVideoUrl?: string;
   withdrawalMaintenance?: boolean;
 }
 
