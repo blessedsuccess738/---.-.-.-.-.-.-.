@@ -5,7 +5,8 @@ import { ADMIN_CONFIG } from '../constants';
 const DB_KEYS = {
   USERS: 'sm_users',
   TRANSACTIONS: 'sm_transactions',
-  CURRENT_USER: 'sm_auth_user'
+  CURRENT_USER: 'sm_auth_user',
+  BROADCAST: 'sm_broadcast_msg'
 };
 
 export const db = {
@@ -37,6 +38,18 @@ export const db = {
       localStorage.setItem(DB_KEYS.CURRENT_USER, JSON.stringify(user));
     } else {
       localStorage.removeItem(DB_KEYS.CURRENT_USER);
+    }
+  },
+
+  getBroadcastMessage: (): string | null => {
+    return localStorage.getItem(DB_KEYS.BROADCAST);
+  },
+
+  setBroadcastMessage: (msg: string | null) => {
+    if (msg) {
+      localStorage.setItem(DB_KEYS.BROADCAST, msg);
+    } else {
+      localStorage.removeItem(DB_KEYS.BROADCAST);
     }
   },
 

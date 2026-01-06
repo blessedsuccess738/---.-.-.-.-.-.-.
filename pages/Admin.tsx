@@ -7,9 +7,10 @@ import { VIP_LEVELS, ADMIN_CONFIG } from '../constants';
 const AdminPanel: React.FC = () => {
   const [users, setUsers] = useState<User[]>(db.getUsers());
   const [transactions, setTransactions] = useState<Transaction[]>(db.getTransactions());
-  const [activeView, setActiveView] = useState<'users' | 'deposits' | 'withdrawals' | 'settings'>('users');
+  const [activeView, setActiveView] = useState<'users' | 'deposits' | 'withdrawals' | 'broadcast'>('users');
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [editBalance, setEditBalance] = useState<string>('');
+  const [broadcastInput, setBroadcastInput] = useState<string>(db.getBroadcastMessage() || '');
 
   const refreshData = () => {
     setUsers(db.getUsers());
@@ -70,6 +71,11 @@ const AdminPanel: React.FC = () => {
     refreshData();
   };
 
+  const handleUpdateBroadcast = () => {
+    db.setBroadcastMessage(broadcastInput.trim() || null);
+    alert('Broadcast message updated successfully!');
+  };
+
   const pendingDeposits = transactions.filter(t => t.type === TransactionType.DEPOSIT && t.status === TransactionStatus.PENDING);
   const pendingWithdrawals = transactions.filter(t => t.type === TransactionType.WITHDRAWAL && t.status === TransactionStatus.PENDING);
 
@@ -128,6 +134,12 @@ const AdminPanel: React.FC = () => {
             className={`px-8 py-5 text-sm font-black transition-all ${activeView === 'withdrawals' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50 dark:bg-blue-900/10' : 'text-gray-500'}`}
           >
             Withdrawals ({pendingWithdrawals.length})
+          </button>
+          <button 
+            onClick={() => setActiveView('broadcast')}
+            className={`px-8 py-5 text-sm font-black transition-all ${activeView === 'broadcast' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50 dark:bg-blue-900/10' : 'text-gray-500'}`}
+          >
+            Broadcast
           </button>
         </div>
 
@@ -242,6 +254,37 @@ const AdminPanel: React.FC = () => {
                 </div>
               ))}
               {pendingWithdrawals.length === 0 && <p className="text-gray-400 dark:text-gray-600 text-center py-20 font-bold italic col-span-full">No pending payout requests.</p>}
+            </div>
+          )}
+
+          {activeView === 'broadcast' && (
+            <div className="max-w-2xl mx-auto space-y-6">
+              <div className="bg-blue-50 dark:bg-blue-900/10 p-6 rounded-3xl border border-blue-100 dark:border-blue-900/30">
+                <h4 className="text-sm font-black text-blue-700 dark:text-blue-400 uppercase tracking-widest mb-2">Compose Global Broadcast</h4>
+                <p className="text-xs text-blue-600/80 dark:text-blue-300/60 leading-relaxed mb-6">
+                  Compose a message that will be displayed at the top of every user's dashboard. Use this to announce maintenance, new VIP tiers, or urgent platform updates.
+                </p>
+                <textarea 
+                  className="w-full h-40 p-4 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 dark:text-white outline-none focus:ring-4 focus:ring-blue-500/10 font-medium resize-none"
+                  placeholder="Enter broadcast message here..."
+                  value={broadcastInput}
+                  onChange={(e) => setBroadcastInput(e.target.value)}
+                ></textarea>
+                <div className="mt-6 flex gap-3">
+                  <button 
+                    onClick={handleUpdateBroadcast}
+                    className="px-8 py-4 bg-blue-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20 active:scale-95"
+                  >
+                    Send Broadcast
+                  </button>
+                  <button 
+                    onClick={() => { setBroadcastInput(''); db.setBroadcastMessage(null); alert('Broadcast cleared!'); }}
+                    className="px-8 py-4 bg-gray-100 dark:bg-gray-800 text-gray-500 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-gray-200 dark:hover:bg-gray-700 transition-all active:scale-95"
+                  >
+                    Clear Global Message
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>
