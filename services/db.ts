@@ -115,20 +115,13 @@ export const db = {
         .single();
 
       if (error || !profile) {
-        throw new Error('User not found.');
+        throw new Error('User account not found in system.');
       }
 
       await db.deleteUser(profile.id);
     } catch (e) {
       console.error('db.deleteUserByEmail failed:', e);
       throw e;
-    }
-  },
-
-  // To satisfy sync-style usage in legacy code
-  setUsers: async (users: User[]) => {
-    for (const user of users) {
-      await db.updateProfile(user.id, user);
     }
   },
 
@@ -143,27 +136,6 @@ export const db = {
     } catch (e) {
       console.error('db.getTransactions failed:', e);
       return [];
-    }
-  },
-
-  setTransactions: async (txs: Transaction[]) => {
-    for (const tx of txs) {
-      try {
-        const dbTx = {
-          id: tx.id,
-          user_id: tx.userId,
-          amount: tx.amount,
-          type: tx.type,
-          status: tx.status,
-          date: tx.date,
-          method: tx.method,
-          receipt_url: tx.receiptUrl,
-          description: tx.description
-        };
-        await supabase.from('transactions').upsert(dbTx);
-      } catch (e) {
-        console.error('db.setTransactions item failed:', e);
-      }
     }
   },
 
@@ -229,7 +201,7 @@ export const db = {
 
   getDepositConfig: async (): Promise<DepositConfig> => {
     const config = await db.getSystemConfig();
-    return config?.deposit_config || { mainAddress: '', tokens: [] };
+    return config?.deposit_config || { mainAddress: '', tokens: [], blocklist: [] };
   },
 
   setDepositConfig: async (config: DepositConfig) => {
@@ -282,9 +254,5 @@ export const db = {
     } catch (e) {
       console.error('db.addChatMessage failed:', e);
     }
-  },
-
-  setCurrentUser: (user: User | null) => {
-    // Auth is handled by Supabase
   }
 };
