@@ -77,7 +77,10 @@ const Login: React.FC = () => {
             <input type="email" required className="w-full px-5 py-4 rounded-2xl border dark:bg-gray-800 dark:border-gray-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 transition-all" placeholder="Enter your email" value={email} onChange={(e) => setEmail(e.target.value)} />
           </div>
           <div className="space-y-1">
-            <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-2">Password</label>
+            <div className="flex justify-between items-center">
+              <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-2">Password</label>
+              <Link to="/forgot-password" title="Click to reset password" data-testid="forgot-password-link" className="text-[10px] font-black uppercase tracking-widest text-blue-500 hover:underline">Forgot password?</Link>
+            </div>
             <input type="password" required className="w-full px-5 py-4 rounded-2xl border dark:bg-gray-800 dark:border-gray-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 transition-all" placeholder="Enter your password" value={password} onChange={(e) => setPassword(e.target.value)} />
           </div>
           <button type="submit" disabled={loading} className="w-full py-4 bg-blue-600 text-white font-black rounded-2xl hover:bg-blue-700 disabled:opacity-50 uppercase tracking-widest shadow-lg shadow-blue-500/20 active:scale-95 transition-all mt-2">

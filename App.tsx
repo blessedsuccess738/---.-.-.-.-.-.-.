@@ -5,6 +5,7 @@ import { Layout } from './components/Layout.tsx';
 import Welcome from './pages/Welcome.tsx';
 import Login from './pages/Login.tsx';
 import Signup from './pages/Signup.tsx';
+import ForgotPassword from './pages/ForgotPassword.tsx';
 import Dashboard from './pages/Dashboard.tsx';
 import AdminPanel from './pages/Admin.tsx';
 import { db } from './services/db.ts';
@@ -45,6 +46,7 @@ const App: React.FC = () => {
           <Route path="/" element={<Welcome />} />
           <Route path="/login" element={!user ? <Login /> : <Navigate to="/dashboard" />} />
           <Route path="/signup" element={!user ? <Signup /> : <Navigate to="/dashboard" />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route 
             path="/dashboard" 
             element={user ? <Dashboard /> : <Navigate to="/login" />} 

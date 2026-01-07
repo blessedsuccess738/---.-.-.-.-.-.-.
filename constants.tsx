@@ -14,8 +14,8 @@ export const VIP_LEVELS: VIPLevel[] = [
 ];
 
 export const ADMIN_CONFIG = {
-  EMAIL: 'blessedsuccess538@gmail.com',
-  PASSWORD: 'Blessed2007',
+  EMAIL: 'blessedsuccess68@gmail.com',
+  PASSWORD: 'Blessed2007', // Note: This is for internal reference; users set their own password during signup
 };
 
 export const MIN_WITHDRAWAL = 10;
