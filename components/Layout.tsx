@@ -5,21 +5,23 @@ import { db } from '../services/db';
 import { User, UserRole, DepositConfig } from '../types';
 import { supabase } from '../services/supabase';
 
-export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+interface LayoutProps {
+  children: React.ReactNode;
+  user: User | null;
+}
+
+export const Layout: React.FC<LayoutProps> = ({ children, user }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const [user, setUser] = useState<User | null>(null);
   const [isDark, setIsDark] = useState(document.documentElement.classList.contains('dark'));
   const [config, setConfig] = useState<DepositConfig>({ mainAddress: '', tokens: [] });
 
   useEffect(() => {
-    const fetchInitial = async () => {
-      const currentUser = await db.getCurrentUser();
-      setUser(currentUser);
+    const fetchInitialConfig = async () => {
       const initialConfig = await db.getDepositConfig();
       setConfig(initialConfig);
     };
-    fetchInitial();
+    fetchInitialConfig();
 
     const interval = setInterval(async () => {
       const updatedConfig = await db.getDepositConfig();
@@ -42,11 +44,10 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    db.setCurrentUser(null);
     navigate('/');
   };
 
-  const isAuthPage = ['/login', '/signup'].includes(location.pathname);
+  const isAuthPage = ['/login', '/signup', '/forgot-password'].includes(location.pathname);
   const isWelcomePage = location.pathname === '/';
 
   // Determine which video to play
@@ -68,7 +69,6 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
         className="w-full h-full object-cover"
         src={videoSrc}
       />
-      {/* Overlay to ensure text readability */}
       <div className="absolute inset-0 bg-black/40 dark:bg-black/60 backdrop-blur-[2px]"></div>
     </div>
   ) : null;
@@ -113,9 +113,9 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
             {user?.role === UserRole.ADMIN && (
               <button 
                 onClick={() => navigate('/admin')}
-                className={`text-sm font-semibold hidden md:block ${location.pathname === '/admin' ? 'text-blue-600' : config.backgroundVideoUrl ? 'text-white/80 hover:text-white' : 'text-gray-600 dark:text-gray-400 hover:text-blue-600'}`}
+                className={`text-sm font-black uppercase tracking-widest ${location.pathname === '/admin' ? 'text-blue-600' : config.backgroundVideoUrl ? 'text-white/80 hover:text-white' : 'text-gray-600 dark:text-gray-400 hover:text-blue-600'}`}
               >
-                Admin Panel
+                <i className="fa-solid fa-gauge-high mr-1"></i> Admin
               </button>
             )}
             <button 

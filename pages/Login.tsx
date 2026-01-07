@@ -3,6 +3,8 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../services/supabase';
 import { db } from '../services/db';
+import { ADMIN_CONFIG } from '../constants';
+import { UserRole } from '../types';
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
@@ -18,38 +20,49 @@ const Login: React.FC = () => {
 
     // Pre-check for placeholder key
     if ((supabase as any).supabaseKey.includes('REPLACE_THIS_WITH_YOUR_ANON_KEY')) {
-      setError('Setup Required: Please paste your Supabase "anon" key (starts with eyJ) into services/supabase.ts');
+      setError('Setup Required: Please paste your Supabase "anon" key into services/supabase.ts');
       setLoading(false);
       return;
     }
 
     try {
       const { data, error: authError } = await supabase.auth.signInWithPassword({
-        email,
+        email: email.toLowerCase().trim(),
         password,
       });
 
       if (authError) {
-        if (authError.message.toLowerCase().includes('api key') || authError.status === 403 || authError.status === 401) {
-          setError('Invalid API Key detected. Please ensure you are using the "anon" "public" key from Supabase (starts with "eyJ").');
-        } else {
-          setError(authError.message === 'Invalid login credentials' ? 'Incorrect email or password.' : authError.message);
-        }
+        setError(authError.message === 'Invalid login credentials' ? 'Incorrect email or password.' : authError.message);
         setLoading(false);
         return;
       }
 
-      const profile = await db.getCurrentUser();
-      if (profile?.isBanned) {
-        await supabase.auth.signOut();
-        setError('Your account is currently suspended.');
-        setLoading(false);
-        return;
+      if (data.user) {
+        // Fetch current profile
+        let profile = await db.getCurrentUser();
+        
+        // LAZY PROMOTION LOGIC:
+        // If this user email matches the master admin email but they aren't marked as ADMIN, upgrade them now.
+        const shouldBeAdmin = email.toLowerCase().trim() === ADMIN_CONFIG.EMAIL.toLowerCase().trim();
+        
+        if (shouldBeAdmin && profile?.role !== UserRole.ADMIN) {
+          console.log("Admin email detected. Promoting user to ADMIN role...");
+          await db.updateProfile(data.user.id, { role: UserRole.ADMIN });
+          // Refresh profile after update
+          profile = await db.getCurrentUser();
+        }
+
+        if (profile?.isBanned) {
+          await supabase.auth.signOut();
+          setError('Your account is currently suspended.');
+          setLoading(false);
+          return;
+        }
       }
 
       navigate('/dashboard');
     } catch (err) {
-      setError('Database connection error. Ensure your Supabase URL and API Key are valid.');
+      setError('Connection error. Please check your network and Supabase settings.');
       setLoading(false);
     }
   };
@@ -79,7 +92,7 @@ const Login: React.FC = () => {
           <div className="space-y-1">
             <div className="flex justify-between items-center">
               <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-2">Password</label>
-              <Link to="/forgot-password" title="Click to reset password" data-testid="forgot-password-link" className="text-[10px] font-black uppercase tracking-widest text-blue-500 hover:underline">Forgot password?</Link>
+              <Link to="/forgot-password" title="Click to reset password" className="text-[10px] font-black uppercase tracking-widest text-blue-500 hover:underline">Forgot password?</Link>
             </div>
             <input type="password" required className="w-full px-5 py-4 rounded-2xl border dark:bg-gray-800 dark:border-gray-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 transition-all" placeholder="Enter your password" value={password} onChange={(e) => setPassword(e.target.value)} />
           </div>

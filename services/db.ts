@@ -14,6 +14,7 @@ const mapProfile = (p: any): User | null => {
     role: p.role as UserRole,
     miningTimerStart: p.mining_timer_start,
     isBanned: p.is_banned || false,
+    warning: p.warning || null,
     createdAt: p.created_at
   };
 };
@@ -28,6 +29,7 @@ const mapProfileToDB = (u: Partial<User>): any => {
   if (u.role !== undefined) mapped.role = u.role;
   if (u.miningTimerStart !== undefined) mapped.mining_timer_start = u.miningTimerStart;
   if (u.isBanned !== undefined) mapped.is_banned = u.isBanned;
+  if (u.warning !== undefined) mapped.warning = u.warning;
   return mapped;
 };
 
@@ -40,6 +42,7 @@ const mapTransaction = (t: any): Transaction => ({
   status: t.status,
   date: t.date,
   method: t.method,
+  // Fix: mapping database 'receipt_url' to interface property 'receiptUrl'
   receiptUrl: t.receipt_url,
   description: t.description
 });
@@ -68,6 +71,14 @@ export const db = {
   updateProfile: async (userId: string, updates: Partial<User>) => {
     const dbUpdates = mapProfileToDB(updates);
     await supabase.from('profiles').update(dbUpdates).eq('id', userId);
+  },
+
+  deleteUser: async (userId: string) => {
+    // Note: This only deletes the profile. Auth user deletion requires Admin API which isn't available in client SDK usually.
+    // However, we can delete their profile data.
+    await supabase.from('transactions').delete().eq('user_id', userId);
+    await supabase.from('chats').delete().eq('user_id', userId);
+    return await supabase.from('profiles').delete().eq('id', userId);
   },
 
   // To satisfy sync-style usage in legacy code
@@ -158,7 +169,7 @@ export const db = {
       senderName: m.sender_name,
       text: m.text,
       timestamp: m.timestamp,
-      isAdmin: m.is_admin
+      is_admin: m.is_admin
     }));
   },
 

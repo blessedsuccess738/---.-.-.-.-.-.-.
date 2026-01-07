@@ -24,6 +24,10 @@ const AdminPanel: React.FC = () => {
   const [chatUserIds, setChatUserIds] = useState<string[]>([]);
   const [lastMessages, setLastMessages] = useState<Record<string, ChatMessage>>({});
 
+  // Warning Modal State
+  const [warningUser, setWarningUser] = useState<User | null>(null);
+  const [warningText, setWarningText] = useState('');
+
   // Payment Configuration State
   const [paymentConfig, setPaymentConfig] = useState<DepositConfig>({ mainAddress: '', tokens: [] });
   const [newTokens, setNewTokens] = useState<TokenAddress[]>([]);
@@ -103,9 +107,6 @@ const AdminPanel: React.FC = () => {
     if (tx.type === TransactionType.DEPOSIT) {
       await db.updateProfile(targetUser.id, { walletBalance: (targetUser.walletBalance || 0) + tx.amount });
     } else if (tx.type === TransactionType.WITHDRAWAL) {
-      // Logic for withdrawal is different since balance is deducted upon request in some systems, 
-      // but here we deduct it upon approval for safety unless it was already frozen.
-      // Based on Dashboard.tsx, balance isn't deducted yet, so we deduct now.
       if (targetUser.walletBalance < tx.amount) {
         alert('Insufficient balance!');
         return;
@@ -127,6 +128,39 @@ const AdminPanel: React.FC = () => {
     if (!editingUser) return;
     await db.updateProfile(editingUser.id, { walletBalance: parseFloat(editBalance) });
     setEditingUser(null);
+    await refreshData();
+  };
+
+  const handleToggleBan = async (user: User) => {
+    if (user.role === UserRole.ADMIN) {
+      alert("Cannot restrict another administrator.");
+      return;
+    }
+    const confirmMsg = user.isBanned ? "Lift suspension for this user?" : "Suspend this user account? They will be unable to log in.";
+    if (confirm(confirmMsg)) {
+      await db.updateProfile(user.id, { isBanned: !user.isBanned });
+      await refreshData();
+    }
+  };
+
+  const handleDeleteUser = async (user: User) => {
+    if (user.role === UserRole.ADMIN) {
+      alert("Cannot delete an administrator profile.");
+      return;
+    }
+    if (confirm(`Are you absolutely sure you want to delete ${user.username}? This action is permanent and deletes all their transaction history.`)) {
+      await db.deleteUser(user.id);
+      await refreshData();
+    }
+  };
+
+  const handleSendWarning = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!warningUser) return;
+    await db.updateProfile(warningUser.id, { warning: warningText || null });
+    setWarningUser(null);
+    setWarningText('');
+    alert('User status updated.');
     await refreshData();
   };
 
@@ -215,19 +249,40 @@ const AdminPanel: React.FC = () => {
               <table className="w-full text-left">
                 <thead>
                   <tr className="text-[10px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-50 dark:border-gray-800">
-                    <th className="px-6 py-4">User</th>
-                    <th className="px-6 py-4">Tier</th>
+                    <th className="px-6 py-4">User Info</th>
+                    <th className="px-6 py-4 text-center">Status</th>
                     <th className="px-6 py-4">Balance</th>
-                    <th className="px-6 py-4">Actions</th>
+                    <th className="px-6 py-4">Management Actions</th>
                   </tr>
                 </thead>
                 <tbody className="text-sm">
                   {users.map(u => (
-                    <tr key={u.id} className="border-b border-gray-50 dark:border-gray-800/50">
-                      <td className="px-6 py-5"><div className="font-black text-gray-800 dark:text-white">{u.username}</div><div className="text-[10px] text-gray-400">{u.email}</div></td>
-                      <td className="px-6 py-5 uppercase font-black text-[10px] dark:text-gray-300">{u.activeVipId ? `VIP ${u.activeVipId}` : 'NONE'}</td>
-                      <td className="px-6 py-5 font-mono font-black dark:text-gray-300">${(u.walletBalance || 0).toFixed(2)}</td>
-                      <td className="px-6 py-5"><button onClick={() => { setEditingUser(u); setEditBalance((u.walletBalance || 0).toString()); }} className="text-blue-600 font-black uppercase text-[10px] hover:underline">Adjust Balance</button></td>
+                    <tr key={u.id} className={`border-b border-gray-50 dark:border-gray-800/50 ${u.isBanned ? 'opacity-50' : ''}`}>
+                      <td className="px-6 py-5">
+                        <div className="font-black text-gray-800 dark:text-white flex items-center gap-2">
+                          {u.username} 
+                          {u.role === UserRole.ADMIN && <span className="bg-blue-600 text-white text-[8px] px-1.5 py-0.5 rounded-full uppercase">Admin</span>}
+                        </div>
+                        <div className="text-[10px] text-gray-400">{u.email}</div>
+                        {u.warning && <div className="text-[9px] text-amber-600 font-bold uppercase mt-1">Warning: {u.warning.substring(0, 30)}...</div>}
+                      </td>
+                      <td className="px-6 py-5 text-center">
+                        <div className="flex flex-col items-center gap-1">
+                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${u.isBanned ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+                            {u.isBanned ? 'Banned' : 'Active'}
+                          </span>
+                          <span className="text-[9px] text-gray-400 uppercase font-black">{u.activeVipId ? `VIP ${u.activeVipId}` : 'No Tier'}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-5 font-mono font-black dark:text-gray-300 text-lg">${(u.walletBalance || 0).toFixed(2)}</td>
+                      <td className="px-6 py-5">
+                        <div className="flex flex-wrap gap-3">
+                          <button onClick={() => { setEditingUser(u); setEditBalance((u.walletBalance || 0).toString()); }} className="bg-blue-50 dark:bg-blue-900/20 text-blue-600 p-2 rounded-lg hover:bg-blue-100 transition-colors" title="Adjust Balance"><i className="fa-solid fa-coins"></i></button>
+                          <button onClick={() => { setWarningUser(u); setWarningText(u.warning || ''); }} className="bg-amber-50 dark:bg-amber-900/20 text-amber-600 p-2 rounded-lg hover:bg-amber-100 transition-colors" title="Warning Message"><i className="fa-solid fa-triangle-exclamation"></i></button>
+                          <button onClick={() => handleToggleBan(u)} className={`${u.isBanned ? 'bg-green-50 dark:bg-green-900/20 text-green-600' : 'bg-red-50 dark:bg-red-900/20 text-red-600'} p-2 rounded-lg hover:opacity-80 transition-colors`} title={u.isBanned ? "Unban" : "Ban User"}><i className={`fa-solid ${u.isBanned ? 'fa-user-check' : 'fa-user-slash'}`}></i></button>
+                          <button onClick={() => handleDeleteUser(u)} className="bg-red-600 text-white p-2 rounded-lg hover:bg-red-700 transition-colors shadow-sm" title="Delete User"><i className="fa-solid fa-trash-can"></i></button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -557,6 +612,25 @@ const AdminPanel: React.FC = () => {
             <div className="flex gap-3">
               <button type="submit" className="flex-1 py-4 bg-blue-600 text-white font-black rounded-2xl uppercase tracking-widest active:scale-95 shadow-lg shadow-blue-500/20">Save</button>
               <button type="button" onClick={() => setEditingUser(null)} className="flex-1 py-4 bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 rounded-2xl uppercase tracking-widest active:scale-95">Cancel</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {warningUser && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[100] flex items-center justify-center p-4">
+          <form onSubmit={handleSendWarning} className="bg-white dark:bg-gray-900 p-8 rounded-[2.5rem] shadow-2xl max-w-md w-full animate-in zoom-in duration-300">
+            <h3 className="text-2xl font-black mb-2 uppercase text-gray-800 dark:text-white">User Warning</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6 font-medium">Issue a warning message to <span className="text-amber-600">{warningUser.username}</span>. Leave empty to clear warnings.</p>
+            <textarea 
+              className="w-full px-5 py-4 rounded-2xl border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 text-sm dark:text-white outline-none mb-6 min-h-[100px]" 
+              placeholder="Ex: Multiple IP detected. Suspicious activity noted."
+              value={warningText} 
+              onChange={(e) => setWarningText(e.target.value)} 
+            />
+            <div className="flex gap-3">
+              <button type="submit" className="flex-1 py-4 bg-amber-600 text-white font-black rounded-2xl uppercase tracking-widest active:scale-95 shadow-lg shadow-amber-500/20">Apply</button>
+              <button type="button" onClick={() => { setWarningUser(null); setWarningText(''); }} className="flex-1 py-4 bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 rounded-2xl uppercase tracking-widest active:scale-95">Cancel</button>
             </div>
           </form>
         </div>

@@ -46,6 +46,7 @@ export interface User {
   role: UserRole;
   miningTimerStart: string | null; // ISO string
   isBanned: boolean;
+  warning: string | null;
   createdAt: string;
 }
 

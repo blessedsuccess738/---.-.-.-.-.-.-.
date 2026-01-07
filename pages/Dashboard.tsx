@@ -325,6 +325,17 @@ const Dashboard: React.FC = () => {
 
   return (
     <div className="space-y-6 relative pb-20">
+      {/* Account Warning Banner */}
+      {user?.warning && (
+        <div className="bg-red-600 text-white p-5 rounded-2xl flex items-center shadow-xl shadow-red-500/20 border border-white/10 animate-pulse">
+          <div className="bg-white/20 p-3 rounded-xl mr-4"><i className="fa-solid fa-triangle-exclamation text-xl"></i></div>
+          <div className="flex-1 text-left">
+            <h4 className="text-[10px] font-black uppercase tracking-widest text-white/80 mb-1">Administrative Account Warning</h4>
+            <p className="text-sm font-black leading-relaxed">{user.warning}</p>
+          </div>
+        </div>
+      )}
+
       {/* Global Broadcast Banner */}
       {broadcastMsg && !isBroadcastDismissed && (
         <div className="bg-amber-100 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 p-4 rounded-2xl flex items-start shadow-sm transition-all animate-in slide-in-from-top duration-300">
@@ -506,7 +517,6 @@ const Dashboard: React.FC = () => {
                   <div className="bg-blue-600 rounded-3xl p-8 text-white text-center shadow-xl shadow-blue-500/20">
                     <p className="text-[10px] font-black uppercase tracking-widest opacity-80 mb-4">Choose Payment Asset</p>
                     
-                    {/* Searchable Token Selector for Deposits */}
                     <div className="mb-6 relative">
                        <input 
                         type="text" 

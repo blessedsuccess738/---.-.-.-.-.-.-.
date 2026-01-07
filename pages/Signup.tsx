@@ -9,6 +9,7 @@ const Signup: React.FC = () => {
   const [formData, setFormData] = useState({ username: '', email: '', password: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [sent, setSent] = useState(false);
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -16,26 +17,27 @@ const Signup: React.FC = () => {
     setError('');
 
     try {
+      // We provide a redirectTo that points to our verification landing page
       const { data, error: authError } = await supabase.auth.signUp({
-        email: formData.email,
+        email: formData.email.toLowerCase().trim(),
         password: formData.password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/#/verify-email`,
+          data: {
+            username: formData.username
+          }
+        }
       });
 
       if (authError) {
-        if (authError.message.toLowerCase().includes('api key') || authError.status === 403) {
-          setError('Invalid Supabase API Key. Please verify services/supabase.ts.');
-        } else {
-          setError(authError.message);
-        }
+        setError(authError.message);
         setLoading(false);
         return;
       }
 
       if (data.user) {
-        // Auto-assign admin role if email matches the one in constants
         const isAdmin = formData.email.toLowerCase().trim() === ADMIN_CONFIG.EMAIL.toLowerCase().trim();
         
-        // Create profile in our public table
         const { error: profileError } = await supabase.from('profiles').insert({
           id: data.user.id,
           username: formData.username,
@@ -49,14 +51,40 @@ const Signup: React.FC = () => {
           setLoading(false);
           return;
         }
-      }
 
-      navigate('/dashboard?new=true');
+        // If email confirmation is enabled in Supabase, the user isn't fully "active" yet.
+        // We show the "check your email" screen.
+        setSent(true);
+      }
     } catch (err: any) {
       setError('Connection failed. Please check your network and Supabase settings.');
       setLoading(false);
     }
   };
+
+  if (sent) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4 bg-gray-50 dark:bg-gray-950">
+        <div className="max-w-md w-full p-10 rounded-[3rem] shadow-2xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 text-center animate-in fade-in zoom-in duration-500">
+          <div className="w-20 h-20 mx-auto mb-8 rounded-[2rem] flex items-center justify-center text-4xl bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
+            <i className="fa-solid fa-envelope-circle-check"></i>
+          </div>
+          <h2 className="text-3xl font-black uppercase tracking-tight dark:text-white mb-4">Check Your Inbox</h2>
+          <p className="text-gray-500 dark:text-gray-400 mb-8 leading-relaxed">
+            We've sent a verification link to <span className="font-bold text-blue-600">{formData.email}</span>. Please click the link in the email to activate your SmartMine account.
+          </p>
+          <div className="space-y-4">
+            <Link to="/login" className="block w-full py-4 bg-blue-600 text-white font-black rounded-2xl uppercase tracking-widest shadow-lg shadow-blue-500/20 active:scale-95 transition-all">
+              Return to Login
+            </Link>
+            <button onClick={() => setSent(false)} className="text-xs font-black uppercase tracking-widest text-gray-400 hover:text-blue-600 transition-colors">
+              Use a different email
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4 bg-gray-50 dark:bg-gray-950">
@@ -83,7 +111,7 @@ const Signup: React.FC = () => {
           <div className="space-y-1">
             <div className="flex justify-between items-center">
               <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-2">Secure Password</label>
-              <Link to="/forgot-password" title="Click to reset password" data-testid="forgot-password-link" className="text-[10px] font-black uppercase tracking-widest text-blue-500 hover:underline">Forgot password?</Link>
+              <Link to="/forgot-password" title="Click to reset password" className="text-[10px] font-black uppercase tracking-widest text-blue-500 hover:underline">Forgot password?</Link>
             </div>
             <input type="password" placeholder="Min 6 characters" required className="w-full px-5 py-4 rounded-2xl border dark:bg-gray-800 dark:border-gray-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 transition-all" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} />
           </div>
