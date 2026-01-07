@@ -32,11 +32,19 @@ const App: React.FC = () => {
   }, []);
 
   const refreshUser = useCallback(async () => {
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    
+    if (!authUser) {
+      setUser(null);
+      setLoading(false);
+      return null;
+    }
+
     const profile = await db.getCurrentUser();
     
-    // Proactive Ban Check: If user is logged in but now banned, log them out.
-    if (profile?.isBanned) {
-      console.log("Restriction detected. Logging out...");
+    // If the admin has permanently deleted the profile row, or banned them
+    if (!profile || profile.isBanned) {
+      console.log("Account no longer active or restriction detected. Terminating session...");
       await supabase.auth.signOut();
       setUser(null);
       setLoading(false);
@@ -54,24 +62,26 @@ const App: React.FC = () => {
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session) {
+      if (event === 'SIGNED_IN') {
         await refreshUser();
-      } else {
+      } else if (event === 'SIGNED_OUT') {
         setUser(null);
         setLoading(false);
       }
     });
 
-    // Background sync check for bans (every 10s)
-    const banCheckInterval = setInterval(refreshUser, 10000);
+    // Background sync check for bans or deletions (every 10s)
+    const syncInterval = setInterval(refreshUser, 10000);
 
     return () => {
       subscription.unsubscribe();
-      clearInterval(banCheckInterval);
+      clearInterval(syncInterval);
     };
   }, [refreshUser]);
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-950 text-white font-black tracking-widest uppercase animate-pulse text-xs">SmartMine Secure Boot...</div>;
+  // We remove the pulsed loading screen and just return the router immediately.
+  // Routes will handle the protection based on the user object once loading is false.
+  if (loading) return null; 
 
   return (
     <Router>

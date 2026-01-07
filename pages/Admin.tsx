@@ -198,14 +198,14 @@ const AdminPanel: React.FC = () => {
 
   const handlePurgeByEmail = async () => {
     if (!purgeEmail.trim()) return;
-    if (confirm(`DANGER: Are you sure you want to search and nuke any profile matching ${purgeEmail}?`)) {
+    if (confirm(`DANGER: Are you sure you want to search and nuke any profile matching ${purgeEmail}? This is permanent.`)) {
       try {
         await db.deleteUserByEmail(purgeEmail);
-        alert(`Account associated with ${purgeEmail} has been completely erased.`);
+        alert(`Account associated with ${purgeEmail} has been completely erased from the platform.`);
         setPurgeEmail('');
         await refreshData();
       } catch (err: any) {
-        alert(err.message || 'Purge failed.');
+        alert(err.message || 'Purge failed. User might not exist.');
       }
     }
   };
@@ -320,59 +320,60 @@ const AdminPanel: React.FC = () => {
         <div className="p-4 md:p-8">
           {activeView === 'users' && (
             <div className="space-y-8">
-              {/* User Search & Purge Utilities */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="relative">
-                  <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2 ml-1">Live Search</h4>
-                  <div className="relative">
-                    <i className="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                    <input 
-                      type="text" 
-                      placeholder="Find by email or username..." 
-                      className="w-full pl-12 pr-4 py-4 rounded-2xl bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 outline-none focus:ring-2 focus:ring-blue-500 text-sm dark:text-white font-medium transition-all"
-                      value={userSearchTerm}
-                      onChange={(e) => setUserSearchTerm(e.target.value)}
-                    />
-                  </div>
+              {/* Manual Account Purge Tool */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6 bg-red-50/10 dark:bg-red-950/5 rounded-3xl border border-red-100 dark:border-red-900/30">
+                <div className="space-y-1">
+                  <h4 className="text-xs font-black uppercase tracking-widest text-red-600 flex items-center gap-2">
+                    <i className="fa-solid fa-burst"></i> Permanent Purge Tool
+                  </h4>
+                  <p className="text-[10px] text-gray-500 font-medium italic">Instantly delete any user by their exact email address. This wipes everything.</p>
                 </div>
+                <div className="flex gap-2">
+                  <input 
+                    type="email" 
+                    placeholder="Enter email to delete permanently..." 
+                    className="flex-1 px-4 py-3 rounded-xl bg-white dark:bg-gray-900 border border-red-100 dark:border-red-900/50 text-xs font-mono dark:text-white outline-none focus:ring-2 focus:ring-red-500"
+                    value={purgeEmail}
+                    onChange={(e) => setPurgeEmail(e.target.value)}
+                  />
+                  <button 
+                    onClick={handlePurgeByEmail}
+                    className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-black text-[10px] uppercase tracking-widest active:scale-95 transition-all shadow-md shadow-red-500/20"
+                  >
+                    Nuke
+                  </button>
+                </div>
+              </div>
 
-                <div className="relative">
-                  <h4 className="text-[10px] font-black uppercase tracking-widest text-red-500 mb-2 ml-1">Manual Account Purge</h4>
-                  <div className="flex gap-2">
-                    <input 
-                      type="email" 
-                      placeholder="Enter exact email to nuke..." 
-                      className="flex-1 px-5 py-4 rounded-2xl bg-red-50/50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 outline-none focus:ring-2 focus:ring-red-500 text-sm dark:text-white font-mono"
-                      value={purgeEmail}
-                      onChange={(e) => setPurgeEmail(e.target.value)}
-                    />
-                    <button 
-                      onClick={handlePurgeByEmail}
-                      className="bg-red-600 hover:bg-red-700 text-white px-6 rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-red-500/20 transition-all active:scale-95"
-                    >
-                      Purge
-                    </button>
-                  </div>
-                </div>
+              {/* User List & Live Search */}
+              <div className="relative max-w-md">
+                <i className="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                <input 
+                  type="text" 
+                  placeholder="Live Filter: Email or username..." 
+                  className="w-full pl-12 pr-4 py-4 rounded-2xl bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 outline-none focus:ring-2 focus:ring-blue-500 text-sm dark:text-white font-medium transition-all"
+                  value={userSearchTerm}
+                  onChange={(e) => setUserSearchTerm(e.target.value)}
+                />
               </div>
 
               <div className="overflow-x-auto">
                 <table className="w-full text-left">
                   <thead>
                     <tr className="text-[10px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-50 dark:border-gray-800">
-                      <th className="px-6 py-4">User Details</th>
-                      <th className="px-6 py-4 text-center">Security Status</th>
-                      <th className="px-6 py-4">Current Balance</th>
-                      <th className="px-6 py-4 text-right">Management Actions</th>
+                      <th className="px-6 py-4">User Identity</th>
+                      <th className="px-6 py-4 text-center">Platform Status</th>
+                      <th className="px-6 py-4">Wallet Balance</th>
+                      <th className="px-6 py-4 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="text-sm">
                     {filteredUsers.map(u => (
-                      <tr key={u.id} className={`border-b border-gray-50 dark:border-gray-800/50 transition-colors hover:bg-gray-50/50 dark:hover:bg-gray-800/30 ${u.isBanned ? 'opacity-60 bg-red-50/10' : ''}`}>
+                      <tr key={u.id} className={`border-b border-gray-50 dark:border-gray-800/50 transition-colors hover:bg-gray-50/50 dark:hover:bg-gray-800/30 ${u.isBanned ? 'opacity-50' : ''}`}>
                         <td className="px-6 py-5">
                           <div className="font-black text-gray-800 dark:text-white flex items-center gap-2">
                             {u.username} 
-                            {u.role === UserRole.ADMIN && <span className="bg-blue-600 text-white text-[8px] px-1.5 py-0.5 rounded-full uppercase">Admin</span>}
+                            {u.role === UserRole.ADMIN && <span className="bg-blue-600 text-white text-[8px] px-1.5 py-0.5 rounded-full uppercase">System Admin</span>}
                           </div>
                           <div className="text-[10px] text-gray-400 font-mono select-all">{u.email}</div>
                           {u.warning && (
@@ -384,7 +385,7 @@ const AdminPanel: React.FC = () => {
                         <td className="px-6 py-5 text-center">
                           <div className="flex flex-col items-center gap-1">
                             <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${u.isBanned ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'}`}>
-                              {u.isBanned ? 'Suspended' : 'Active Access'}
+                              {u.isBanned ? 'Suspended' : 'Active User'}
                             </span>
                             <span className="text-[9px] text-gray-400 uppercase font-black">{u.activeVipId ? `VIP ${u.activeVipId} License` : 'Unlicensed'}</span>
                           </div>
@@ -392,10 +393,10 @@ const AdminPanel: React.FC = () => {
                         <td className="px-6 py-5 font-mono font-black dark:text-gray-300 text-lg">${(u.walletBalance || 0).toFixed(2)}</td>
                         <td className="px-6 py-5">
                           <div className="flex justify-end gap-2">
-                            <button onClick={() => { setEditingUser(u); setEditBalance((u.walletBalance || 0).toString()); }} className="bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 w-10 h-10 rounded-xl hover:bg-blue-100 transition-all flex items-center justify-center" title="Edit Wallet Balance"><i className="fa-solid fa-coins"></i></button>
-                            <button onClick={() => { setWarningUser(u); setWarningText(u.warning || ''); }} className="bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 w-10 h-10 rounded-xl hover:bg-amber-100 transition-all flex items-center justify-center" title="Warn User"><i className="fa-solid fa-triangle-exclamation"></i></button>
-                            <button onClick={() => handleToggleBan(u)} className={`${u.isBanned ? 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400' : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'} w-10 h-10 rounded-xl hover:opacity-80 transition-all flex items-center justify-center`} title={u.isBanned ? "Lift Suspension" : "Suspend Access"}><i className={`fa-solid ${u.isBanned ? 'fa-user-check' : 'fa-user-slash'}`}></i></button>
-                            <button onClick={() => handleDeleteUser(u)} className="bg-red-600 text-white w-10 h-10 rounded-xl hover:bg-red-700 transition-all shadow-md flex items-center justify-center" title="Nuke Profile Forever"><i className="fa-solid fa-trash-can"></i></button>
+                            <button onClick={() => { setEditingUser(u); setEditBalance((u.walletBalance || 0).toString()); }} className="bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 w-9 h-9 rounded-xl hover:bg-blue-100 transition-all flex items-center justify-center" title="Edit Wallet Balance"><i className="fa-solid fa-coins"></i></button>
+                            <button onClick={() => { setWarningUser(u); setWarningText(u.warning || ''); }} className="bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 w-9 h-9 rounded-xl hover:bg-amber-100 transition-all flex items-center justify-center" title="Warn User"><i className="fa-solid fa-triangle-exclamation"></i></button>
+                            <button onClick={() => handleToggleBan(u)} className={`${u.isBanned ? 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400' : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'} w-9 h-9 rounded-xl hover:opacity-80 transition-all flex items-center justify-center`} title={u.isBanned ? "Lift Suspension" : "Suspend Access"}><i className={`fa-solid ${u.isBanned ? 'fa-user-check' : 'fa-user-slash'}`}></i></button>
+                            <button onClick={() => handleDeleteUser(u)} className="bg-red-600 text-white w-9 h-9 rounded-xl hover:bg-red-700 transition-all shadow-md flex items-center justify-center" title="Nuke Profile Forever"><i className="fa-solid fa-trash-can"></i></button>
                           </div>
                         </td>
                       </tr>
@@ -503,147 +504,6 @@ const AdminPanel: React.FC = () => {
                         />
                       </div>
                     </div>
-                  </div>
-                </div>
-
-                <div className="bg-white dark:bg-gray-800/40 p-6 rounded-3xl border border-blue-100 dark:border-blue-800/50 mb-10">
-                  <h5 className="text-[10px] font-black uppercase text-gray-400 mb-6 tracking-widest border-b pb-2">Screen Media Links</h5>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <div>
-                      <label className="block text-[10px] font-black uppercase text-gray-400 mb-2 tracking-widest">Welcome Screen Video</label>
-                      <div className="relative">
-                        <i className="fa-solid fa-clapperboard absolute left-4 top-1/2 -translate-y-1/2 text-blue-600"></i>
-                        <input 
-                          type="text" 
-                          className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-medium dark:text-white outline-none"
-                          value={welcomeVideo}
-                          onChange={(e) => setWelcomeVideo(e.target.value)}
-                          placeholder="Welcome MP4"
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-black uppercase text-gray-400 mb-2 tracking-widest">Login/Signup Video</label>
-                      <div className="relative">
-                        <i className="fa-solid fa-key absolute left-4 top-1/2 -translate-y-1/2 text-blue-600"></i>
-                        <input 
-                          type="text" 
-                          className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-medium dark:text-white outline-none"
-                          value={authVideo}
-                          onChange={(e) => setAuthVideo(e.target.value)}
-                          placeholder="Auth MP4 URL"
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-black uppercase text-gray-400 mb-2 tracking-widest">Mining Farm Video</label>
-                      <div className="relative">
-                        <i className="fa-solid fa-video absolute left-4 top-1/2 -translate-y-1/2 text-blue-600"></i>
-                        <input 
-                          type="text" 
-                          className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-medium dark:text-white outline-none"
-                          value={miningVideo}
-                          onChange={(e) => setMiningVideo(e.target.value)}
-                          placeholder="Mining Farm MP4"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
-                  <div>
-                    <label className="block text-[10px] font-black uppercase text-gray-400 mb-2 tracking-widest">Telegram Support Link</label>
-                    <div className="relative">
-                      <i className="fa-brands fa-telegram absolute left-4 top-1/2 -translate-y-1/2 text-sky-500"></i>
-                      <input 
-                        type="text" 
-                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-medium dark:text-white"
-                        value={tgSupport}
-                        onChange={(e) => setTgSupport(e.target.value)}
-                        placeholder="https://t.me/..."
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-black uppercase text-gray-400 mb-2 tracking-widest">Telegram Channel Link</label>
-                    <div className="relative">
-                      <i className="fa-solid fa-bullhorn absolute left-4 top-1/2 -translate-y-1/2 text-indigo-500"></i>
-                      <input 
-                        type="text" 
-                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-medium dark:text-white"
-                        value={tgChannel}
-                        onChange={(e) => setTgChannel(e.target.value)}
-                        placeholder="https://t.me/..."
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-6">
-                  <h5 className="text-[10px] font-black uppercase text-gray-400 mb-4 tracking-widest border-b pb-2 flex justify-between items-center">
-                    Deposit Assets Management
-                    <button 
-                      onClick={() => setShowTokenSelector(!showTokenSelector)}
-                      className="text-blue-600 hover:text-blue-700 font-black text-xs uppercase"
-                    >
-                      {showTokenSelector ? 'Close Selector' : '+ Add Token'}
-                    </button>
-                  </h5>
-
-                  {showTokenSelector && (
-                    <div className="p-6 bg-white dark:bg-gray-800 rounded-3xl border border-blue-100 dark:border-blue-800 shadow-xl animate-in fade-in zoom-in duration-200">
-                      <label className="block text-[10px] font-black uppercase text-gray-400 mb-3 tracking-widest">Search & Add Asset</label>
-                      <input 
-                        type="text" 
-                        placeholder="Search among all tokens..." 
-                        className="w-full px-4 py-3 rounded-2xl bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700 text-sm outline-none focus:ring-2 focus:ring-blue-500 mb-4 dark:text-white"
-                        value={tokenSearch}
-                        onChange={(e) => setTokenSearch(e.target.value)}
-                      />
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-2 scrollbar-hide">
-                        {filteredPredefined.map(name => (
-                          <button 
-                            key={name}
-                            onClick={() => addToken(name)}
-                            className="text-left px-4 py-2 rounded-xl text-[10px] font-black uppercase border border-gray-100 dark:border-gray-800 hover:bg-blue-600 hover:text-white transition-all truncate"
-                          >
-                            {name}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="space-y-4">
-                    {newTokens.map((token, idx) => (
-                      <div key={idx} className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end bg-white dark:bg-gray-800 p-6 rounded-3xl border border-gray-100 dark:border-gray-700 shadow-sm relative group">
-                        <div className="md:col-span-3">
-                          <label className="block text-[10px] font-black uppercase text-gray-400 mb-1 tracking-widest">Token Name</label>
-                          <div className="px-4 py-2 rounded-xl bg-gray-50 dark:bg-gray-950 text-xs font-black text-blue-600 dark:text-blue-400 border border-gray-100 dark:border-gray-800 uppercase">
-                            {token.name}
-                          </div>
-                        </div>
-                        <div className="md:col-span-7">
-                          <label className="block text-[10px] font-black uppercase text-gray-400 mb-1 tracking-widest">Company Wallet Address</label>
-                          <input 
-                            type="text" 
-                            className="w-full px-4 py-2 rounded-xl border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-950 text-[10px] font-mono dark:text-white outline-none focus:ring-2 focus:ring-blue-500" 
-                            value={token.address} 
-                            onChange={(e) => handleTokenChange(idx, 'address', e.target.value)} 
-                            placeholder={`Enter ${token.name} Address`} 
-                          />
-                        </div>
-                        <div className="md:col-span-2">
-                          <button 
-                            onClick={() => setNewTokens(newTokens.filter((_, i) => i !== idx))} 
-                            className="w-full py-2 bg-red-50 text-red-600 rounded-xl text-xs hover:bg-red-100 transition-all font-black uppercase"
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      </div>
-                    ))}
                   </div>
                 </div>
 

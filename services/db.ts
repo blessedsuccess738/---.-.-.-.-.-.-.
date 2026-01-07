@@ -91,13 +91,15 @@ export const db = {
 
   deleteUser: async (userId: string) => {
     try {
-      // Delete all related data first
+      // PERMANENT SYSTEM-WIDE DELETE
+      // 1. Delete all transactions
       await supabase.from('transactions').delete().eq('user_id', userId);
+      // 2. Delete all chat messages
       await supabase.from('chats').delete().eq('user_id', userId);
-      // Finally delete the profile
+      // 3. Delete the profile row (This triggers logout for user in App.tsx)
       const { error } = await supabase.from('profiles').delete().eq('id', userId);
       if (error) throw error;
-      console.log(`User ${userId} and all associated data permanently removed from DB.`);
+      console.log(`User ${userId} has been completely erased from the platform databases.`);
     } catch (e) {
       console.error('db.deleteUser failed:', e);
       throw e;
@@ -106,14 +108,14 @@ export const db = {
 
   deleteUserByEmail: async (email: string) => {
     try {
-      const { data: profile, error: findError } = await supabase
+      const { data: profile, error } = await supabase
         .from('profiles')
         .select('id')
         .eq('email', email.toLowerCase().trim())
         .single();
 
-      if (findError || !profile) {
-        throw new Error('User not found in system.');
+      if (error || !profile) {
+        throw new Error('User not found.');
       }
 
       await db.deleteUser(profile.id);
