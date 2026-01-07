@@ -2,14 +2,22 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db } from '../services/db';
+import { DepositConfig } from '../types';
 
 const Welcome: React.FC = () => {
   const navigate = useNavigate();
-  const [config, setConfig] = useState(db.getDepositConfig());
+  const [config, setConfig] = useState<DepositConfig>({ mainAddress: '', tokens: [] });
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setConfig(db.getDepositConfig());
+    const fetchConfig = async () => {
+      const cfg = await db.getDepositConfig();
+      setConfig(cfg);
+    };
+    fetchConfig();
+    
+    const interval = setInterval(async () => {
+      const cfg = await db.getDepositConfig();
+      setConfig(cfg);
     }, 5000);
     return () => clearInterval(interval);
   }, []);

@@ -2,18 +2,28 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { db } from '../services/db';
-import { UserRole } from '../types';
+import { User, UserRole, DepositConfig } from '../types';
+import { supabase } from '../services/supabase';
 
 export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const user = db.getCurrentUser();
+  const [user, setUser] = useState<User | null>(null);
   const [isDark, setIsDark] = useState(document.documentElement.classList.contains('dark'));
-  const [config, setConfig] = useState(db.getDepositConfig());
+  const [config, setConfig] = useState<DepositConfig>({ mainAddress: '', tokens: [] });
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setConfig(db.getDepositConfig());
+    const fetchInitial = async () => {
+      const currentUser = await db.getCurrentUser();
+      setUser(currentUser);
+      const initialConfig = await db.getDepositConfig();
+      setConfig(initialConfig);
+    };
+    fetchInitial();
+
+    const interval = setInterval(async () => {
+      const updatedConfig = await db.getDepositConfig();
+      setConfig(updatedConfig);
     }, 5000);
     return () => clearInterval(interval);
   }, []);
@@ -30,7 +40,8 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
     db.setCurrentUser(null);
     navigate('/');
   };
@@ -43,9 +54,6 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
   if (isAuthPage && config.authVideoUrl) {
     videoSrc = config.authVideoUrl;
   } else if (isWelcomePage && config.welcomeVideoUrl) {
-    // Welcome page handles its own video in Welcome.tsx for specific layering, 
-    // but we can also handle it here if preferred. 
-    // Currently Welcome.tsx has its own <video> tag for better control.
     videoSrc = ''; 
   }
 

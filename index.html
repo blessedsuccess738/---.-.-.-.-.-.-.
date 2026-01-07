@@ -11,24 +11,14 @@
         darkMode: 'class',
         theme: {
           extend: {
-            fontFamily: {
-              sans: ['Inter', 'sans-serif'],
-            },
-            animation: {
-              'bounce-slow': 'bounce-slow 3s ease-in-out infinite',
-            },
-            keyframes: {
-              'bounce-slow': {
-                '0%, 100%': { transform: 'translateY(-5%)' },
-                '50%': { transform: 'translateY(0)' },
-              }
-            }
+            fontFamily: { sans: ['Inter', 'sans-serif'] },
+            animation: { 'bounce-slow': 'bounce-slow 3s ease-in-out infinite' },
+            keyframes: { 'bounce-slow': { '0%, 100%': { transform: 'translateY(-5%)' }, '50%': { transform: 'translateY(0)' } } }
           }
         }
       }
     </script>
     <script>
-      // Apply theme before page render to prevent flicker
       if (localStorage.getItem('sm_theme') === 'dark' || (!localStorage.getItem('sm_theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
         document.documentElement.classList.add('dark');
       } else {
@@ -49,8 +39,9 @@
     "react-dom": "https://esm.sh/react-dom@19.0.0",
     "react-dom/client": "https://esm.sh/react-dom@19.0.0/client",
     "react-router-dom": "https://esm.sh/react-router-dom@7.1.5",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "react/": "https://esm.sh/react@^19.2.3/"
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2.48.1",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/"
   }
 }
 </script>

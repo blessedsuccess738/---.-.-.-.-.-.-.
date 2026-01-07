@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from './components/Layout.tsx';
 import Welcome from './pages/Welcome.tsx';
@@ -8,38 +8,50 @@ import Signup from './pages/Signup.tsx';
 import Dashboard from './pages/Dashboard.tsx';
 import AdminPanel from './pages/Admin.tsx';
 import { db } from './services/db.ts';
-import { UserRole } from './types.ts';
-
-const PrivateRoute: React.FC<{ children: React.ReactElement, adminOnly?: boolean }> = ({ children, adminOnly }) => {
-  const user = db.getCurrentUser();
-  if (!user) return <Navigate to="/login" />;
-  if (adminOnly && user.role !== UserRole.ADMIN) return <Navigate to="/dashboard" />;
-  return children;
-};
+import { User, UserRole } from './types.ts';
+import { supabase } from './services/supabase.ts';
 
 const App: React.FC = () => {
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      const profile = await db.getCurrentUser();
+      setUser(profile);
+      setLoading(false);
+    };
+
+    fetchUser();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session) {
+        const profile = await db.getCurrentUser();
+        setUser(profile);
+      } else {
+        setUser(null);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-950 text-white font-black">SMARTMINE...</div>;
+
   return (
     <Router>
       <Layout>
         <Routes>
           <Route path="/" element={<Welcome />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/signup" element={<Signup />} />
+          <Route path="/login" element={!user ? <Login /> : <Navigate to="/dashboard" />} />
+          <Route path="/signup" element={!user ? <Signup /> : <Navigate to="/dashboard" />} />
           <Route 
             path="/dashboard" 
-            element={
-              <PrivateRoute>
-                <Dashboard />
-              </PrivateRoute>
-            } 
+            element={user ? <Dashboard /> : <Navigate to="/login" />} 
           />
           <Route 
             path="/admin" 
-            element={
-              <PrivateRoute adminOnly>
-                <AdminPanel />
-              </PrivateRoute>
-            } 
+            element={user?.role === UserRole.ADMIN ? <AdminPanel /> : <Navigate to="/dashboard" />} 
           />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>

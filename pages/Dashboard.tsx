@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { db } from '../services/db';
-import { User, VIPLevel, TransactionType, TransactionStatus, Transaction, ChatMessage } from '../types';
+import { User, VIPLevel, TransactionType, TransactionStatus, Transaction, ChatMessage, DepositConfig } from '../types';
 import { VIP_LEVELS, MINING_CYCLE_HOURS, MIN_WITHDRAWAL } from '../constants';
 
 const WITHDRAW_TOKENS = [
@@ -17,21 +17,18 @@ const WITHDRAW_TOKENS = [
 const Dashboard: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const [user, setUser] = useState<User | null>(db.getCurrentUser());
+  const [user, setUser] = useState<User | null>(null);
   const [timeLeft, setTimeLeft] = useState<string>('00:00:00');
   const [isMiningComplete, setIsMiningComplete] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'vip' | 'deposit' | 'withdraw' | 'history'>('overview');
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
   // Persistent Broadcast dismissal logic
-  const [broadcastMsg, setBroadcastMsg] = useState<string | null>(db.getBroadcastMessage());
-  const [isBroadcastDismissed, setIsBroadcastDismissed] = useState(() => {
-    const currentMsg = db.getBroadcastMessage();
-    const lastDismissed = localStorage.getItem('sm_dismissed_broadcast');
-    return currentMsg === lastDismissed;
-  });
+  const [broadcastMsg, setBroadcastMsg] = useState<string | null>(null);
+  const [isBroadcastDismissed, setIsBroadcastDismissed] = useState(false);
 
-  const [depositConfig, setDepositConfig] = useState(db.getDepositConfig());
+  const [depositConfig, setDepositConfig] = useState<DepositConfig>({ mainAddress: '', tokens: [] });
+  const [userTransactions, setUserTransactions] = useState<Transaction[]>([]);
 
   // VIP Purchase Modal State
   const [showVipModal, setShowVipModal] = useState(false);
@@ -77,7 +74,7 @@ const Dashboard: React.FC = () => {
       return /^[a-zA-Z0-9]{30,50}$/.test(addr);
     }
 
-    // Generic fallback for other 28 tokens: common crypto address check (minimal length)
+    // Generic fallback for other 28 tokens
     return addr.length >= 26 && addr.length <= 100;
   }, [withdrawAddress, selectedWithdrawMethod]);
 
@@ -86,33 +83,32 @@ const Dashboard: React.FC = () => {
   }, [tokenSearch]);
 
   const filteredDepositTokens = useMemo(() => {
-    return depositConfig.tokens.filter(t => t.name.toLowerCase().includes(depositTokenSearch.toLowerCase()));
+    return (depositConfig.tokens || []).filter(t => t.name.toLowerCase().includes(depositTokenSearch.toLowerCase()));
   }, [depositTokenSearch, depositConfig.tokens]);
 
-  const refreshData = useCallback(() => {
-    const currentUser = db.getCurrentUser();
+  const refreshData = useCallback(async () => {
+    const currentUser = await db.getCurrentUser();
     if (currentUser) {
-      const users = db.getUsers();
-      const updatedUser = users.find(u => u.id === currentUser.id);
-      if (updatedUser) {
-        setUser(updatedUser);
-        db.setCurrentUser(updatedUser);
-      }
-      setChatMessages(db.getChats(currentUser.id));
+      setUser(currentUser);
+      const chats = await db.getChats(currentUser.id);
+      setChatMessages(chats);
+      const txs = await db.getTransactions(currentUser.id);
+      setUserTransactions(txs);
     }
-    const newBroadcast = db.getBroadcastMessage();
+    const newBroadcast = await db.getBroadcastMessage();
     setBroadcastMsg(newBroadcast);
     const lastDismissed = localStorage.getItem('sm_dismissed_broadcast');
     if (newBroadcast !== lastDismissed) {
       setIsBroadcastDismissed(false);
     }
     
-    setDepositConfig(db.getDepositConfig());
+    const cfg = await db.getDepositConfig();
+    setDepositConfig(cfg);
   }, []);
 
   useEffect(() => {
     refreshData();
-    const interval = setInterval(refreshData, 3000); 
+    const interval = setInterval(refreshData, 5000); 
     return () => clearInterval(interval);
   }, [refreshData]);
 
@@ -157,11 +153,11 @@ const Dashboard: React.FC = () => {
     return () => clearInterval(timer);
   }, [user?.miningTimerStart]);
 
-  const handleSendMessage = (e: React.FormEvent) => {
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !chatInput.trim()) return;
 
-    const newMessage: ChatMessage = {
+    const newMessage: Partial<ChatMessage> = {
       id: `MSG-${Date.now()}`,
       senderId: user.id,
       senderName: user.username,
@@ -170,32 +166,27 @@ const Dashboard: React.FC = () => {
       isAdmin: false
     };
 
-    db.addChatMessage(user.id, newMessage);
-    setChatMessages(prev => [...prev, newMessage]);
+    await db.addChatMessage(user.id, newMessage);
     setChatInput('');
+    await refreshData();
   };
 
-  const handleStartMining = () => {
+  const handleStartMining = async () => {
     if (!user?.activeVipId) {
       setMessage({ type: 'error', text: 'You need an active VIP level to start mining.' });
       return;
     }
-    const users = db.getUsers();
-    const updatedUsers = users.map(u => u.id === user.id ? { ...u, miningTimerStart: new Date().toISOString() } : u);
-    db.setUsers(updatedUsers);
-    refreshData();
+    await db.updateProfile(user.id, { miningTimerStart: new Date().toISOString() });
+    await refreshData();
     setMessage({ type: 'success', text: 'Mining started successfully!' });
   };
 
-  const handleClaimMining = () => {
+  const handleClaimMining = async () => {
     if (!user || !user.activeVipId) return;
     const vip = VIP_LEVELS.find(v => v.id === user.activeVipId);
     if (!vip) return;
 
-    const users = db.getUsers();
-    const transactions = db.getTransactions();
-
-    const newTransaction: Transaction = {
+    const newTransaction: Partial<Transaction> = {
       id: `TX-${Date.now()}`,
       userId: user.id,
       amount: vip.dailyReturn,
@@ -205,15 +196,13 @@ const Dashboard: React.FC = () => {
       description: `Daily mining yield (${vip.name})`
     };
 
-    const updatedUsers = users.map(u => u.id === user.id ? { 
-      ...u, 
-      walletBalance: u.walletBalance + vip.dailyReturn,
+    await db.createTransaction(newTransaction);
+    await db.updateProfile(user.id, { 
+      walletBalance: user.walletBalance + vip.dailyReturn,
       miningTimerStart: null 
-    } : u);
+    });
 
-    db.setUsers(updatedUsers);
-    db.setTransactions([newTransaction, ...transactions]);
-    refreshData();
+    await refreshData();
     setIsMiningComplete(false);
     setMessage({ type: 'success', text: `Claimed $${vip.dailyReturn.toFixed(2)} from mining!` });
   };
@@ -232,18 +221,10 @@ const Dashboard: React.FC = () => {
     setShowVipModal(true);
   };
 
-  const confirmPurchase = () => {
+  const confirmPurchase = async () => {
     if (!user || !pendingVip) return;
-    const allUsers = db.getUsers();
-    const transactions = db.getTransactions();
-    const updatedUsers = allUsers.map(u => u.id === user.id ? { 
-      ...u, 
-      walletBalance: u.walletBalance - pendingVip.price,
-      activeVipId: pendingVip.id,
-      miningTimerStart: null 
-    } : u);
-
-    const newTransaction: Transaction = {
+    
+    const newTransaction: Partial<Transaction> = {
       id: `TX-${Date.now()}`,
       userId: user.id,
       amount: pendingVip.price,
@@ -253,9 +234,14 @@ const Dashboard: React.FC = () => {
       description: `Purchased ${pendingVip.name} license`
     };
 
-    db.setUsers(updatedUsers);
-    db.setTransactions([newTransaction, ...transactions]);
-    refreshData();
+    await db.createTransaction(newTransaction);
+    await db.updateProfile(user.id, { 
+      walletBalance: user.walletBalance - pendingVip.price,
+      activeVipId: pendingVip.id,
+      miningTimerStart: null 
+    });
+
+    await refreshData();
     setShowVipModal(false);
     setPendingVip(null);
     setMessage({ type: 'success', text: `Successfully upgraded to ${pendingVip.name}!` });
@@ -272,11 +258,10 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  const submitDeposit = () => {
+  const submitDeposit = async () => {
     if (!user || !depositAmount || parseFloat(depositAmount) <= 0 || !receiptBase64) return;
-    const transactions = db.getTransactions();
     const currentToken = depositConfig.tokens[selectedTokenIndex];
-    const newTx: Transaction = {
+    const newTx: Partial<Transaction> = {
       id: `DEP-${Date.now()}`,
       userId: user.id,
       amount: parseFloat(depositAmount),
@@ -287,15 +272,16 @@ const Dashboard: React.FC = () => {
       description: 'Pending wallet deposit',
       receiptUrl: receiptBase64
     };
-    db.setTransactions([newTx, ...transactions]);
+    await db.createTransaction(newTx);
     setMessage({ type: 'success', text: 'Payment submitted successfully! Admin will verify soon.' });
     setDepositAmount('');
     setDepositStep('input');
     setReceiptBase64(null);
     setActiveTab('overview');
+    await refreshData();
   };
 
-  const handleWithdraw = (e: React.FormEvent) => {
+  const handleWithdraw = async (e: React.FormEvent) => {
     e.preventDefault();
     if (depositConfig.withdrawalMaintenance) return;
     const amount = parseFloat(withdrawAmount);
@@ -312,8 +298,7 @@ const Dashboard: React.FC = () => {
       return;
     }
 
-    const transactions = db.getTransactions();
-    const newTx: Transaction = {
+    const newTx: Partial<Transaction> = {
       id: `WD-${Date.now()}`,
       userId: user.id,
       amount: amount,
@@ -323,11 +308,12 @@ const Dashboard: React.FC = () => {
       method: `${selectedWithdrawMethod}: ${withdrawAddress}`,
       description: `Withdrawal via ${selectedWithdrawMethod}`
     };
-    db.setTransactions([newTx, ...transactions]);
+    await db.createTransaction(newTx);
     setMessage({ type: 'success', text: 'Withdrawal request submitted for review.' });
     setWithdrawAmount('');
     setWithdrawAddress('');
     setActiveTab('overview');
+    await refreshData();
   };
 
   const dismissBroadcast = () => {
@@ -336,8 +322,6 @@ const Dashboard: React.FC = () => {
       setIsBroadcastDismissed(true);
     }
   };
-
-  const userTransactions = db.getTransactions().filter(t => t.userId === user?.id);
 
   return (
     <div className="space-y-6 relative pb-20">
@@ -365,7 +349,7 @@ const Dashboard: React.FC = () => {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
         <div className="bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 flex flex-col md:flex-row md:items-center md:space-x-4 transition-all">
           <div className="bg-blue-100 dark:bg-blue-900/30 p-2 md:p-3 rounded-xl text-blue-600 dark:text-blue-400 w-fit mb-2 md:mb-0"><i className="fa-solid fa-wallet text-lg md:text-xl"></i></div>
-          <div className="text-left"><p className="text-gray-500 dark:text-gray-400 text-[10px] md:text-xs font-bold uppercase tracking-wider">Balance</p><p className="text-xl md:text-2xl font-black text-gray-800 dark:text-white transition-colors">${user?.walletBalance.toFixed(2)}</p></div>
+          <div className="text-left"><p className="text-gray-500 dark:text-gray-400 text-[10px] md:text-xs font-bold uppercase tracking-wider">Balance</p><p className="text-xl md:text-2xl font-black text-gray-800 dark:text-white transition-colors">${user?.walletBalance.toFixed(2) || '0.00'}</p></div>
         </div>
         <div className="bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 flex flex-col md:flex-row md:items-center md:space-x-4 transition-all">
           <div className="bg-purple-100 dark:bg-purple-900/30 p-2 md:p-3 rounded-xl text-purple-600 dark:text-purple-400 w-fit mb-2 md:mb-0"><i className="fa-solid fa-crown text-lg md:text-xl"></i></div>
@@ -433,7 +417,7 @@ const Dashboard: React.FC = () => {
                   <div className="flex flex-col items-center justify-center p-6 bg-white/10 rounded-3xl backdrop-blur-md border border-white/20 min-w-[240px] shadow-2xl">
                     <span className="text-xs font-black uppercase tracking-[0.2em] mb-3 text-blue-200">Current Progress</span>
                     <span className="text-5xl font-mono font-black mb-6 drop-shadow-md">{timeLeft}</span>
-                    {!user?.miningTimerStart ? <button onClick={handleStartMining} className="w-full py-4 bg-white text-blue-700 font-black rounded-2xl hover:bg-blue-50 transition-all shadow-lg active:scale-95 text-blue-700">Start New Cycle</button> : isMiningComplete ? <button onClick={handleClaimMining} className="w-full py-4 bg-green-500 text-white font-black rounded-2xl hover:bg-green-600 transition-all shadow-lg animate-pulse active:scale-95 text-white">Claim ${currentVIP?.dailyReturn.toFixed(2)}</button> : <div className="w-full py-4 bg-white/20 text-white font-black rounded-2xl flex items-center justify-center cursor-wait backdrop-blur-sm"><i className="fa-solid fa-gear fa-spin mr-3"></i> Mining...</div>}
+                    {!user?.miningTimerStart ? <button onClick={handleStartMining} className="w-full py-4 bg-white text-blue-700 font-black rounded-2xl hover:bg-blue-50 transition-all shadow-lg active:scale-95">Start New Cycle</button> : isMiningComplete ? <button onClick={handleClaimMining} className="w-full py-4 bg-green-500 text-white font-black rounded-2xl hover:bg-green-600 transition-all shadow-lg animate-pulse active:scale-95">Claim ${currentVIP?.dailyReturn.toFixed(2)}</button> : <div className="w-full py-4 bg-white/20 text-white font-black rounded-2xl flex items-center justify-center cursor-wait backdrop-blur-sm"><i className="fa-solid fa-gear fa-spin mr-3"></i> Mining...</div>}
                   </div>
                 </div>
               </div>
@@ -532,15 +516,18 @@ const Dashboard: React.FC = () => {
                         onChange={(e) => setDepositTokenSearch(e.target.value)}
                        />
                        <div className="mt-3 flex flex-wrap justify-center gap-2 max-h-32 overflow-y-auto scrollbar-hide">
-                        {filteredDepositTokens.map((token, idx) => (
-                          <button 
-                            key={idx} 
-                            onClick={() => setSelectedTokenIndex(depositConfig.tokens.indexOf(token))}
-                            className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase transition-all ${depositConfig.tokens.indexOf(token) === selectedTokenIndex ? 'bg-white text-blue-600' : 'bg-white/10 hover:bg-white/20 text-white'}`}
-                          >
-                            {token.name}
-                          </button>
-                        ))}
+                        {filteredDepositTokens.map((token, idx) => {
+                          const originalIdx = depositConfig.tokens.indexOf(token);
+                          return (
+                            <button 
+                              key={idx} 
+                              onClick={() => setSelectedTokenIndex(originalIdx)}
+                              className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase transition-all ${originalIdx === selectedTokenIndex ? 'bg-white text-blue-600' : 'bg-white/10 hover:bg-white/20 text-white'}`}
+                            >
+                              {token.name}
+                            </button>
+                          );
+                        })}
                         {filteredDepositTokens.length === 0 && <p className="text-[10px] opacity-60">No matching assets found</p>}
                        </div>
                     </div>
@@ -649,7 +636,7 @@ const Dashboard: React.FC = () => {
                 <>
                   <div className="bg-gray-100 dark:bg-gray-800 p-8 rounded-3xl text-center border border-gray-200 dark:border-gray-700">
                     <p className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-2">Available Balance</p>
-                    <p className="text-4xl font-black text-gray-800 dark:text-white">${user?.walletBalance.toFixed(2)}</p>
+                    <p className="text-4xl font-black text-gray-800 dark:text-white">${user?.walletBalance.toFixed(2) || '0.00'}</p>
                   </div>
                   
                   <div className="bg-white/50 dark:bg-gray-800/50 p-6 rounded-3xl border border-gray-100 dark:border-gray-800">

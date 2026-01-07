@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { db } from '../services/db';
 import { User, Transaction, TransactionStatus, TransactionType, UserRole, ChatMessage, TokenAddress, DepositConfig } from '../types';
 import { VIP_LEVELS, ADMIN_CONFIG } from '../constants';
@@ -15,26 +15,28 @@ const PREDEFINED_TOKENS = [
 ];
 
 const AdminPanel: React.FC = () => {
-  const [users, setUsers] = useState<User[]>(db.getUsers());
-  const [transactions, setTransactions] = useState<Transaction[]>(db.getTransactions());
+  const [users, setUsers] = useState<User[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [activeView, setActiveView] = useState<'users' | 'deposits' | 'withdrawals' | 'broadcast' | 'support' | 'payments'>('users');
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [editBalance, setEditBalance] = useState<string>('');
-  const [broadcastInput, setBroadcastInput] = useState<string>(db.getBroadcastMessage() || '');
+  const [broadcastInput, setBroadcastInput] = useState<string>('');
+  const [chatUserIds, setChatUserIds] = useState<string[]>([]);
+  const [lastMessages, setLastMessages] = useState<Record<string, ChatMessage>>({});
 
   // Payment Configuration State
-  const [paymentConfig, setPaymentConfig] = useState<DepositConfig>(db.getDepositConfig());
-  const [newTokens, setNewTokens] = useState<TokenAddress[]>(paymentConfig.tokens);
+  const [paymentConfig, setPaymentConfig] = useState<DepositConfig>({ mainAddress: '', tokens: [] });
+  const [newTokens, setNewTokens] = useState<TokenAddress[]>([]);
   const [tokenSearch, setTokenSearch] = useState('');
   const [showTokenSelector, setShowTokenSelector] = useState(false);
 
-  const [tgSupport, setTgSupport] = useState(paymentConfig.telegramSupport || '');
-  const [tgChannel, setTgChannel] = useState(paymentConfig.telegramChannel || '');
-  const [miningVideo, setMiningVideo] = useState(paymentConfig.miningVideoUrl || '');
-  const [bgVideo, setBgVideo] = useState(paymentConfig.backgroundVideoUrl || '');
-  const [welcomeVideo, setWelcomeVideo] = useState(paymentConfig.welcomeVideoUrl || '');
-  const [authVideo, setAuthVideo] = useState(paymentConfig.authVideoUrl || '');
-  const [withdrawMaint, setWithdrawMaint] = useState(paymentConfig.withdrawalMaintenance || false);
+  const [tgSupport, setTgSupport] = useState('');
+  const [tgChannel, setTgChannel] = useState('');
+  const [miningVideo, setMiningVideo] = useState('');
+  const [bgVideo, setBgVideo] = useState('');
+  const [welcomeVideo, setWelcomeVideo] = useState('');
+  const [authVideo, setAuthVideo] = useState('');
+  const [withdrawMaint, setWithdrawMaint] = useState(false);
 
   // Support Chat State
   const [selectedChatUserId, setSelectedChatUserId] = useState<string | null>(null);
@@ -45,81 +47,106 @@ const AdminPanel: React.FC = () => {
   // Fullscreen Image Modal State
   const [viewingReceiptUrl, setViewingReceiptUrl] = useState<string | null>(null);
 
-  const refreshData = () => {
-    const allUsers = db.getUsers();
+  const refreshData = useCallback(async () => {
+    const allUsers = await db.getUsers();
     setUsers(allUsers);
-    setTransactions(db.getTransactions());
-    if (selectedChatUserId) {
-      setChatMessages(db.getChats(selectedChatUserId));
+    const allTxs = await db.getTransactions();
+    setTransactions(allTxs);
+    
+    const uids = await db.getAllChatUserIds();
+    setChatUserIds(uids);
+
+    // Fetch last messages for each chat user
+    const lastMsgs: Record<string, ChatMessage> = {};
+    for (const uid of uids) {
+      const msgs = await db.getChats(uid);
+      if (msgs.length > 0) {
+        lastMsgs[uid] = msgs[msgs.length - 1];
+      }
     }
-  };
+    setLastMessages(lastMsgs);
+
+    if (selectedChatUserId) {
+      const msgs = await db.getChats(selectedChatUserId);
+      setChatMessages(msgs);
+    }
+    
+    const broadcast = await db.getBroadcastMessage();
+    setBroadcastInput(broadcast || '');
+    
+    const config = await db.getDepositConfig();
+    setPaymentConfig(config);
+    if (newTokens.length === 0) setNewTokens(config.tokens || []);
+    setTgSupport(config.telegramSupport || '');
+    setTgChannel(config.telegramChannel || '');
+    setMiningVideo(config.miningVideoUrl || '');
+    setBgVideo(config.backgroundVideoUrl || '');
+    setWelcomeVideo(config.welcomeVideoUrl || '');
+    setAuthVideo(config.authVideoUrl || '');
+    setWithdrawMaint(config.withdrawalMaintenance || false);
+  }, [selectedChatUserId, newTokens.length]);
 
   useEffect(() => {
-    const interval = setInterval(refreshData, 3000);
+    refreshData();
+    const interval = setInterval(refreshData, 5000);
     return () => clearInterval(interval);
-  }, [selectedChatUserId]);
+  }, [refreshData]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
 
-  const handleApproveTransaction = (tx: Transaction) => {
-    const allUsers = db.getUsers();
-    const allTxs = db.getTransactions();
-    const targetUser = allUsers.find(u => u.id === tx.userId);
+  const handleApproveTransaction = async (tx: Transaction) => {
+    const targetUser = users.find(u => u.id === tx.userId);
     if (!targetUser) return;
-    let updatedUser = { ...targetUser };
+    
     if (tx.type === TransactionType.DEPOSIT) {
-      updatedUser.walletBalance += tx.amount;
+      await db.updateProfile(targetUser.id, { walletBalance: (targetUser.walletBalance || 0) + tx.amount });
     } else if (tx.type === TransactionType.WITHDRAWAL) {
-      if (updatedUser.walletBalance < tx.amount) {
+      // Logic for withdrawal is different since balance is deducted upon request in some systems, 
+      // but here we deduct it upon approval for safety unless it was already frozen.
+      // Based on Dashboard.tsx, balance isn't deducted yet, so we deduct now.
+      if (targetUser.walletBalance < tx.amount) {
         alert('Insufficient balance!');
         return;
       }
-      updatedUser.walletBalance -= tx.amount;
+      await db.updateProfile(targetUser.id, { walletBalance: targetUser.walletBalance - tx.amount });
     }
-    const updatedUsers = allUsers.map(u => u.id === updatedUser.id ? updatedUser : u);
-    const updatedTxs = allTxs.map(t => t.id === tx.id ? { ...t, status: TransactionStatus.APPROVED } : t);
-    db.setUsers(updatedUsers);
-    db.setTransactions(updatedTxs);
-    refreshData();
+    
+    await db.updateTransaction(tx.id, TransactionStatus.APPROVED);
+    await refreshData();
   };
 
-  const handleRejectTransaction = (tx: Transaction) => {
-    const allTxs = db.getTransactions();
-    const updatedTxs = allTxs.map(t => t.id === tx.id ? { ...t, status: TransactionStatus.REJECTED } : t);
-    db.setTransactions(updatedTxs);
-    refreshData();
+  const handleRejectTransaction = async (tx: Transaction) => {
+    await db.updateTransaction(tx.id, TransactionStatus.REJECTED);
+    await refreshData();
   };
 
-  const handleUpdateBalance = (e: React.FormEvent) => {
+  const handleUpdateBalance = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingUser) return;
-    const allUsers = db.getUsers();
-    const updatedUsers = allUsers.map(u => u.id === editingUser.id ? { ...u, walletBalance: parseFloat(editBalance) } : u);
-    db.setUsers(updatedUsers);
-    refreshData();
+    await db.updateProfile(editingUser.id, { walletBalance: parseFloat(editBalance) });
     setEditingUser(null);
+    await refreshData();
   };
 
-  const handleSendMessage = (e: React.FormEvent) => {
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedChatUserId || !chatInput.trim()) return;
-    const newMessage: ChatMessage = {
-      id: `MSG-${Date.now()}`,
+    const newMessage: Partial<ChatMessage> = {
       senderId: 'admin',
       senderName: 'Support Agent',
       text: chatInput,
       timestamp: new Date().toISOString(),
       isAdmin: true
     };
-    db.addChatMessage(selectedChatUserId, newMessage);
-    setChatMessages(prev => [...prev, newMessage]);
+    await db.addChatMessage(selectedChatUserId, newMessage);
     setChatInput('');
+    await refreshData();
   };
 
-  const savePaymentConfig = () => {
-    db.setDepositConfig({ 
+  const savePaymentConfig = async () => {
+    await db.setDepositConfig({ 
       ...paymentConfig, 
       tokens: newTokens,
       telegramSupport: tgSupport,
@@ -131,6 +158,7 @@ const AdminPanel: React.FC = () => {
       withdrawalMaintenance: withdrawMaint
     });
     alert('Platform configuration updated successfully!');
+    await refreshData();
   };
 
   const handleTokenChange = (index: number, field: 'name' | 'address', value: string) => {
@@ -153,12 +181,12 @@ const AdminPanel: React.FC = () => {
     return PREDEFINED_TOKENS.filter(t => t.toLowerCase().includes(tokenSearch.toLowerCase()));
   }, [tokenSearch]);
 
-  const handleUpdateBroadcast = () => {
-    db.setBroadcastMessage(broadcastInput);
+  const handleUpdateBroadcast = async () => {
+    await db.setBroadcastMessage(broadcastInput);
     alert('Broadcast updated successfully!');
+    await refreshData();
   };
 
-  const chatUserIds = db.getAllChatUserIds();
   const pendingDeposits = transactions.filter(t => t.type === TransactionType.DEPOSIT && t.status === TransactionStatus.PENDING);
   const pendingWithdrawals = transactions.filter(t => t.type === TransactionType.WITHDRAWAL && t.status === TransactionStatus.PENDING);
 
@@ -198,8 +226,8 @@ const AdminPanel: React.FC = () => {
                     <tr key={u.id} className="border-b border-gray-50 dark:border-gray-800/50">
                       <td className="px-6 py-5"><div className="font-black text-gray-800 dark:text-white">{u.username}</div><div className="text-[10px] text-gray-400">{u.email}</div></td>
                       <td className="px-6 py-5 uppercase font-black text-[10px] dark:text-gray-300">{u.activeVipId ? `VIP ${u.activeVipId}` : 'NONE'}</td>
-                      <td className="px-6 py-5 font-mono font-black dark:text-gray-300">${u.walletBalance.toFixed(2)}</td>
-                      <td className="px-6 py-5"><button onClick={() => { setEditingUser(u); setEditBalance(u.walletBalance.toString()); }} className="text-blue-600 font-black uppercase text-[10px] hover:underline">Adjust Balance</button></td>
+                      <td className="px-6 py-5 font-mono font-black dark:text-gray-300">${(u.walletBalance || 0).toFixed(2)}</td>
+                      <td className="px-6 py-5"><button onClick={() => { setEditingUser(u); setEditBalance((u.walletBalance || 0).toString()); }} className="text-blue-600 font-black uppercase text-[10px] hover:underline">Adjust Balance</button></td>
                     </tr>
                   ))}
                 </tbody>
@@ -213,7 +241,7 @@ const AdminPanel: React.FC = () => {
                 <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-4">Active Conversations</h4>
                 {chatUserIds.map(uid => {
                   const chatUser = users.find(u => u.id === uid);
-                  const lastMsg = db.getChats(uid).slice(-1)[0];
+                  const lastMsg = lastMessages[uid];
                   return (
                     <button 
                       key={uid}
@@ -247,7 +275,7 @@ const AdminPanel: React.FC = () => {
                     </div>
                     <form onSubmit={handleSendMessage} className="p-4 bg-white dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800 flex gap-2">
                       <input type="text" className="flex-1 px-4 py-3 rounded-xl bg-gray-100 dark:bg-gray-800 dark:text-white outline-none text-sm" placeholder="Type a reply..." value={chatInput} onChange={(e) => setChatInput(e.target.value)} />
-                      <button type="submit" className="px-6 py-3 bg-blue-600 text-white rounded-xl font-black uppercase text-xs tracking-widest active:scale-95 text-white">Send Reply</button>
+                      <button type="submit" className="px-6 py-3 bg-blue-600 text-white rounded-xl font-black uppercase text-xs tracking-widest active:scale-95">Send Reply</button>
                     </form>
                   </>
                 ) : (
@@ -339,7 +367,6 @@ const AdminPanel: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Telegram Links Configuration */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
                   <div>
                     <label className="block text-[10px] font-black uppercase text-gray-400 mb-2 tracking-widest">Telegram Support Link</label>
@@ -369,7 +396,6 @@ const AdminPanel: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Deposit Token Configuration */}
                 <div className="space-y-6">
                   <h5 className="text-[10px] font-black uppercase text-gray-400 mb-4 tracking-widest border-b pb-2 flex justify-between items-center">
                     Deposit Assets Management
@@ -434,27 +460,11 @@ const AdminPanel: React.FC = () => {
                         </div>
                       </div>
                     ))}
-                    {newTokens.length === 0 && (
-                      <div className="py-12 text-center text-gray-400 italic text-xs border-2 border-dashed border-gray-100 dark:border-gray-800 rounded-3xl">
-                        No tokens configured for deposit yet. Use the selector above to add assets.
-                      </div>
-                    )}
                   </div>
                 </div>
 
                 <div className="mt-10 flex gap-4">
-                  <button onClick={savePaymentConfig} className="flex-1 py-5 bg-blue-600 text-white rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-blue-500/20 active:scale-95 text-white">Save All Configuration</button>
-                  <button onClick={() => {
-                    const cfg = db.getDepositConfig();
-                    setNewTokens(cfg.tokens);
-                    setTgSupport(cfg.telegramSupport || '');
-                    setTgChannel(cfg.telegramChannel || '');
-                    setMiningVideo(cfg.miningVideoUrl || '');
-                    setBgVideo(cfg.backgroundVideoUrl || '');
-                    setWelcomeVideo(cfg.welcomeVideoUrl || '');
-                    setAuthVideo(cfg.authVideoUrl || '');
-                    setWithdrawMaint(cfg.withdrawalMaintenance || false);
-                  }} className="px-8 py-5 bg-gray-100 text-gray-600 rounded-2xl font-black uppercase tracking-widest active:scale-95">Reset</button>
+                  <button onClick={savePaymentConfig} className="flex-1 py-5 bg-blue-600 text-white rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-blue-500/20 active:scale-95">Save All Configuration</button>
                 </div>
               </div>
             </div>
@@ -487,7 +497,7 @@ const AdminPanel: React.FC = () => {
                   )}
 
                   <div className="flex gap-3">
-                    <button onClick={() => handleApproveTransaction(tx)} className="flex-1 py-4 bg-green-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-lg shadow-green-500/20 active:scale-95 text-white">Approve</button>
+                    <button onClick={() => handleApproveTransaction(tx)} className="flex-1 py-4 bg-green-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-lg shadow-green-500/20 active:scale-95">Approve</button>
                     <button onClick={() => handleRejectTransaction(tx)} className="flex-1 py-4 bg-red-100 text-red-600 rounded-2xl font-black uppercase text-xs tracking-widest active:scale-95">Reject</button>
                   </div>
                 </div>
@@ -506,41 +516,56 @@ const AdminPanel: React.FC = () => {
                   </div>
                   <div className="text-3xl font-black mb-1 text-gray-800 dark:text-white">${tx.amount.toFixed(2)}</div>
                   <div className="text-xs text-gray-500 mb-4 font-bold uppercase">To User: {users.find(u => u.id === tx.userId)?.email}</div>
-                  <div className="p-3 bg-white dark:bg-gray-950 rounded-xl font-mono text-[10px] text-blue-600 mb-6 break-all border border-gray-100 dark:border-gray-800">{tx.method}</div>
+                  <div className="mb-6 p-4 bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800">
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Destination Details</p>
+                    <p className="text-xs font-mono break-all text-gray-800 dark:text-gray-200">{tx.method}</p>
+                  </div>
                   <div className="flex gap-3">
-                    <button onClick={() => handleApproveTransaction(tx)} className="flex-1 py-4 bg-blue-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-lg shadow-blue-500/20 active:scale-95 text-white">Process Payout</button>
-                    <button onClick={() => handleRejectTransaction(tx)} className="flex-1 py-4 bg-red-100 text-red-600 rounded-2xl font-black uppercase text-xs tracking-widest active:scale-95">Decline</button>
+                    <button onClick={() => handleApproveTransaction(tx)} className="flex-1 py-4 bg-green-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-lg shadow-green-500/20 active:scale-95">Mark Paid</button>
+                    <button onClick={() => handleRejectTransaction(tx)} className="flex-1 py-4 bg-red-100 text-red-600 rounded-2xl font-black uppercase text-xs tracking-widest active:scale-95">Reject</button>
                   </div>
                 </div>
               ))}
-              {pendingWithdrawals.length === 0 && <p className="text-gray-400 text-center py-20 italic col-span-full">No pending payout requests.</p>}
+              {pendingWithdrawals.length === 0 && <p className="text-gray-400 text-center py-20 italic col-span-full">No pending withdrawal requests.</p>}
             </div>
           )}
 
           {activeView === 'broadcast' && (
-            <div className="max-w-2xl mx-auto py-8 text-left">
-              <div className="bg-blue-50 dark:bg-blue-900/10 p-8 rounded-[2.5rem] border border-blue-100 dark:border-blue-900/30">
-                <h4 className="text-sm font-black text-blue-700 uppercase tracking-widest mb-4">Send Global Announcement</h4>
-                <textarea className="w-full h-40 p-5 rounded-3xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 outline-none text-sm font-medium resize-none shadow-sm dark:text-white" placeholder="Enter message for all users..." value={broadcastInput} onChange={(e) => setBroadcastInput(e.target.value)} />
-                <div className="mt-6 flex gap-3">
-                  <button onClick={handleUpdateBroadcast} className="flex-1 py-4 bg-blue-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl shadow-blue-500/20 active:scale-95 text-white">Push Broadcast</button>
-                  <button onClick={() => { setBroadcastInput(''); db.setBroadcastMessage(null); alert('Broadcast cleared!'); }} className="px-6 py-4 bg-gray-100 text-gray-500 rounded-2xl font-black uppercase text-xs tracking-widest active:scale-95">Clear Message</button>
-                </div>
+            <div className="max-w-2xl mx-auto space-y-6 text-left">
+              <div className="bg-blue-50 dark:bg-blue-900/10 p-8 rounded-3xl border border-blue-100 dark:border-blue-900/30">
+                <h4 className="text-lg font-black text-gray-800 dark:text-white mb-2 uppercase tracking-tight">Broadcast Announcement</h4>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">This message will appear at the top of every user dashboard until dismissed.</p>
+                <textarea 
+                  className="w-full px-5 py-4 rounded-2xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 text-sm dark:text-white outline-none focus:ring-2 focus:ring-blue-500 min-h-[120px]" 
+                  placeholder="Enter important updates for all users..."
+                  value={broadcastInput}
+                  onChange={(e) => setBroadcastInput(e.target.value)}
+                />
+                <button onClick={handleUpdateBroadcast} className="w-full mt-4 py-4 bg-blue-600 text-white font-black rounded-2xl uppercase tracking-widest shadow-lg shadow-blue-500/20 active:scale-95 transition-all">Publish Broadcast</button>
               </div>
             </div>
           )}
         </div>
       </div>
 
-      {/* Fullscreen Receipt Modal */}
+      {editingUser && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[100] flex items-center justify-center p-4">
+          <form onSubmit={handleUpdateBalance} className="bg-white dark:bg-gray-900 p-8 rounded-[2.5rem] shadow-2xl max-w-md w-full animate-in zoom-in duration-300">
+            <h3 className="text-2xl font-black mb-2 uppercase text-gray-800 dark:text-white">Adjust Balance</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-8 font-medium">Updating wallet for <span className="text-blue-600">{editingUser.username}</span></p>
+            <input type="number" step="0.01" className="w-full px-5 py-4 rounded-2xl border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 text-xl font-black dark:text-white outline-none mb-6" value={editBalance} onChange={(e) => setEditBalance(e.target.value)} />
+            <div className="flex gap-3">
+              <button type="submit" className="flex-1 py-4 bg-blue-600 text-white font-black rounded-2xl uppercase tracking-widest active:scale-95 shadow-lg shadow-blue-500/20">Save</button>
+              <button type="button" onClick={() => setEditingUser(null)} className="flex-1 py-4 bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 rounded-2xl uppercase tracking-widest active:scale-95">Cancel</button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {viewingReceiptUrl && (
-        <div className="fixed inset-0 bg-black/95 z-[200] flex flex-col items-center justify-center p-4" onClick={() => setViewingReceiptUrl(null)}>
-          <div className="absolute top-6 right-6">
-            <button className="w-12 h-12 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center backdrop-blur-md">
-              <i className="fa-solid fa-xmark"></i>
-            </button>
-          </div>
-          <img src={viewingReceiptUrl} alt="Receipt Fullscreen" className="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl" onClick={(e) => e.stopPropagation()} />
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-xl z-[200] flex items-center justify-center p-6 md:p-12 cursor-zoom-out" onClick={() => setViewingReceiptUrl(null)}>
+          <img src={viewingReceiptUrl} alt="Receipt Full" className="max-w-full max-h-full object-contain shadow-2xl rounded-xl animate-in zoom-in duration-300" />
+          <button className="absolute top-8 right-8 text-white text-4xl hover:scale-110 transition-transform"><i className="fa-solid fa-circle-xmark"></i></button>
         </div>
       )}
     </div>
