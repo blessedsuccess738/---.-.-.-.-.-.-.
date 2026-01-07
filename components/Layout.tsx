@@ -18,14 +18,22 @@ export const Layout: React.FC<LayoutProps> = ({ children, user }) => {
 
   useEffect(() => {
     const fetchInitialConfig = async () => {
-      const initialConfig = await db.getDepositConfig();
-      setConfig(initialConfig);
+      try {
+        const initialConfig = await db.getDepositConfig();
+        setConfig(initialConfig);
+      } catch (err) {
+        console.warn('Initial config fetch failed:', err);
+      }
     };
     fetchInitialConfig();
 
     const interval = setInterval(async () => {
-      const updatedConfig = await db.getDepositConfig();
-      setConfig(updatedConfig);
+      try {
+        const updatedConfig = await db.getDepositConfig();
+        setConfig(updatedConfig);
+      } catch (err) {
+        // Silently fail polling to avoid spamming console with fetch errors
+      }
     }, 5000);
     return () => clearInterval(interval);
   }, []);
@@ -47,7 +55,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, user }) => {
     navigate('/');
   };
 
-  const isAuthPage = ['/login', '/signup', '/forgot-password'].includes(location.pathname);
+  const isAuthPage = ['/login', '/signup', '/forgot-password', '/verify-email'].includes(location.pathname);
   const isWelcomePage = location.pathname === '/';
 
   // Determine which video to play

@@ -87,23 +87,27 @@ const Dashboard: React.FC = () => {
   }, [depositTokenSearch, depositConfig.tokens]);
 
   const refreshData = useCallback(async () => {
-    const currentUser = await db.getCurrentUser();
-    if (currentUser) {
-      setUser(currentUser);
-      const chats = await db.getChats(currentUser.id);
-      setChatMessages(chats);
-      const txs = await db.getTransactions(currentUser.id);
-      setUserTransactions(txs);
+    try {
+      const currentUser = await db.getCurrentUser();
+      if (currentUser) {
+        setUser(currentUser);
+        const chats = await db.getChats(currentUser.id);
+        setChatMessages(chats);
+        const txs = await db.getTransactions(currentUser.id);
+        setUserTransactions(txs);
+      }
+      const newBroadcast = await db.getBroadcastMessage();
+      setBroadcastMsg(newBroadcast);
+      const lastDismissed = localStorage.getItem('sm_dismissed_broadcast');
+      if (newBroadcast !== lastDismissed) {
+        setIsBroadcastDismissed(false);
+      }
+      
+      const cfg = await db.getDepositConfig();
+      setDepositConfig(cfg);
+    } catch (err) {
+      console.warn('Dashboard background refresh failed (possibly network issue):', err);
     }
-    const newBroadcast = await db.getBroadcastMessage();
-    setBroadcastMsg(newBroadcast);
-    const lastDismissed = localStorage.getItem('sm_dismissed_broadcast');
-    if (newBroadcast !== lastDismissed) {
-      setIsBroadcastDismissed(false);
-    }
-    
-    const cfg = await db.getDepositConfig();
-    setDepositConfig(cfg);
   }, []);
 
   useEffect(() => {
@@ -157,18 +161,22 @@ const Dashboard: React.FC = () => {
     e.preventDefault();
     if (!user || !chatInput.trim()) return;
 
-    const newMessage: Partial<ChatMessage> = {
-      id: `MSG-${Date.now()}`,
-      senderId: user.id,
-      senderName: user.username,
-      text: chatInput,
-      timestamp: new Date().toISOString(),
-      isAdmin: false
-    };
+    try {
+      const newMessage: Partial<ChatMessage> = {
+        id: `MSG-${Date.now()}`,
+        senderId: user.id,
+        senderName: user.username,
+        text: chatInput,
+        timestamp: new Date().toISOString(),
+        isAdmin: false
+      };
 
-    await db.addChatMessage(user.id, newMessage);
-    setChatInput('');
-    await refreshData();
+      await db.addChatMessage(user.id, newMessage);
+      setChatInput('');
+      await refreshData();
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Failed to send message. Please check connection.' });
+    }
   };
 
   const handleStartMining = async () => {
@@ -176,9 +184,13 @@ const Dashboard: React.FC = () => {
       setMessage({ type: 'error', text: 'You need an active VIP level to start mining.' });
       return;
     }
-    await db.updateProfile(user.id, { miningTimerStart: new Date().toISOString() });
-    await refreshData();
-    setMessage({ type: 'success', text: 'Mining started successfully!' });
+    try {
+      await db.updateProfile(user.id, { miningTimerStart: new Date().toISOString() });
+      await refreshData();
+      setMessage({ type: 'success', text: 'Mining started successfully!' });
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Failed to start mining. Please try again.' });
+    }
   };
 
   const handleClaimMining = async () => {
@@ -186,25 +198,29 @@ const Dashboard: React.FC = () => {
     const vip = VIP_LEVELS.find(v => v.id === user.activeVipId);
     if (!vip) return;
 
-    const newTransaction: Partial<Transaction> = {
-      id: `TX-${Date.now()}`,
-      userId: user.id,
-      amount: vip.dailyReturn,
-      type: TransactionType.MINING_EARNING,
-      status: TransactionStatus.APPROVED,
-      date: new Date().toISOString(),
-      description: `Daily mining yield (${vip.name})`
-    };
+    try {
+      const newTransaction: Partial<Transaction> = {
+        id: `TX-${Date.now()}`,
+        userId: user.id,
+        amount: vip.dailyReturn,
+        type: TransactionType.MINING_EARNING,
+        status: TransactionStatus.APPROVED,
+        date: new Date().toISOString(),
+        description: `Daily mining yield (${vip.name})`
+      };
 
-    await db.createTransaction(newTransaction);
-    await db.updateProfile(user.id, { 
-      walletBalance: user.walletBalance + vip.dailyReturn,
-      miningTimerStart: null 
-    });
+      await db.createTransaction(newTransaction);
+      await db.updateProfile(user.id, { 
+        walletBalance: (user.walletBalance || 0) + vip.dailyReturn,
+        miningTimerStart: null 
+      });
 
-    await refreshData();
-    setIsMiningComplete(false);
-    setMessage({ type: 'success', text: `Claimed $${vip.dailyReturn.toFixed(2)} from mining!` });
+      await refreshData();
+      setIsMiningComplete(false);
+      setMessage({ type: 'success', text: `Claimed $${vip.dailyReturn.toFixed(2)} from mining!` });
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Failed to claim earnings. Please try again.' });
+    }
   };
 
   const handlePurchaseVIP = (vip: VIPLevel) => {
@@ -224,27 +240,31 @@ const Dashboard: React.FC = () => {
   const confirmPurchase = async () => {
     if (!user || !pendingVip) return;
     
-    const newTransaction: Partial<Transaction> = {
-      id: `TX-${Date.now()}`,
-      userId: user.id,
-      amount: pendingVip.price,
-      type: TransactionType.VIP_PURCHASE,
-      status: TransactionStatus.APPROVED,
-      date: new Date().toISOString(),
-      description: `Purchased ${pendingVip.name} license`
-    };
+    try {
+      const newTransaction: Partial<Transaction> = {
+        id: `TX-${Date.now()}`,
+        userId: user.id,
+        amount: pendingVip.price,
+        type: TransactionType.VIP_PURCHASE,
+        status: TransactionStatus.APPROVED,
+        date: new Date().toISOString(),
+        description: `Purchased ${pendingVip.name} license`
+      };
 
-    await db.createTransaction(newTransaction);
-    await db.updateProfile(user.id, { 
-      walletBalance: user.walletBalance - pendingVip.price,
-      activeVipId: pendingVip.id,
-      miningTimerStart: null 
-    });
+      await db.createTransaction(newTransaction);
+      await db.updateProfile(user.id, { 
+        walletBalance: (user.walletBalance || 0) - pendingVip.price,
+        activeVipId: pendingVip.id,
+        miningTimerStart: null 
+      });
 
-    await refreshData();
-    setShowVipModal(false);
-    setPendingVip(null);
-    setMessage({ type: 'success', text: `Successfully upgraded to ${pendingVip.name}!` });
+      await refreshData();
+      setShowVipModal(false);
+      setPendingVip(null);
+      setMessage({ type: 'success', text: `Successfully upgraded to ${pendingVip.name}!` });
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Upgrade failed. Please check connection.' });
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -260,25 +280,29 @@ const Dashboard: React.FC = () => {
 
   const submitDeposit = async () => {
     if (!user || !depositAmount || parseFloat(depositAmount) <= 0 || !receiptBase64) return;
-    const currentToken = depositConfig.tokens[selectedTokenIndex];
-    const newTx: Partial<Transaction> = {
-      id: `DEP-${Date.now()}`,
-      userId: user.id,
-      amount: parseFloat(depositAmount),
-      type: TransactionType.DEPOSIT,
-      status: TransactionStatus.PENDING,
-      date: new Date().toISOString(),
-      method: currentToken ? currentToken.name : 'Direct Transfer',
-      description: 'Pending wallet deposit',
-      receiptUrl: receiptBase64
-    };
-    await db.createTransaction(newTx);
-    setMessage({ type: 'success', text: 'Payment submitted successfully! Admin will verify soon.' });
-    setDepositAmount('');
-    setDepositStep('input');
-    setReceiptBase64(null);
-    setActiveTab('overview');
-    await refreshData();
+    try {
+      const currentToken = depositConfig.tokens[selectedTokenIndex];
+      const newTx: Partial<Transaction> = {
+        id: `DEP-${Date.now()}`,
+        userId: user.id,
+        amount: parseFloat(depositAmount),
+        type: TransactionType.DEPOSIT,
+        status: TransactionStatus.PENDING,
+        date: new Date().toISOString(),
+        method: currentToken ? currentToken.name : 'Direct Transfer',
+        description: 'Pending wallet deposit',
+        receiptUrl: receiptBase64
+      };
+      await db.createTransaction(newTx);
+      setMessage({ type: 'success', text: 'Payment submitted successfully! Admin will verify soon.' });
+      setDepositAmount('');
+      setDepositStep('input');
+      setReceiptBase64(null);
+      setActiveTab('overview');
+      await refreshData();
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Failed to submit payment. Please try again.' });
+    }
   };
 
   const handleWithdraw = async (e: React.FormEvent) => {
@@ -298,22 +322,26 @@ const Dashboard: React.FC = () => {
       return;
     }
 
-    const newTx: Partial<Transaction> = {
-      id: `WD-${Date.now()}`,
-      userId: user.id,
-      amount: amount,
-      type: TransactionType.WITHDRAWAL,
-      status: TransactionStatus.PENDING,
-      date: new Date().toISOString(),
-      method: `${selectedWithdrawMethod}: ${withdrawAddress}`,
-      description: `Withdrawal via ${selectedWithdrawMethod}`
-    };
-    await db.createTransaction(newTx);
-    setMessage({ type: 'success', text: 'Withdrawal request submitted for review.' });
-    setWithdrawAmount('');
-    setWithdrawAddress('');
-    setActiveTab('overview');
-    await refreshData();
+    try {
+      const newTx: Partial<Transaction> = {
+        id: `WD-${Date.now()}`,
+        userId: user.id,
+        amount: amount,
+        type: TransactionType.WITHDRAWAL,
+        status: TransactionStatus.PENDING,
+        date: new Date().toISOString(),
+        method: `${selectedWithdrawMethod}: ${withdrawAddress}`,
+        description: `Withdrawal via ${selectedWithdrawMethod}`
+      };
+      await db.createTransaction(newTx);
+      setMessage({ type: 'success', text: 'Withdrawal request submitted for review.' });
+      setWithdrawAmount('');
+      setWithdrawAddress('');
+      setActiveTab('overview');
+      await refreshData();
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Withdrawal request failed. Please check connection.' });
+    }
   };
 
   const dismissBroadcast = () => {

@@ -24,13 +24,18 @@ const AdminPanel: React.FC = () => {
   const [chatUserIds, setChatUserIds] = useState<string[]>([]);
   const [lastMessages, setLastMessages] = useState<Record<string, ChatMessage>>({});
 
+  // Search & Purge State
+  const [userSearchTerm, setUserSearchTerm] = useState('');
+  const [purgeEmail, setPurgeEmail] = useState('');
+
   // Warning Modal State
   const [warningUser, setWarningUser] = useState<User | null>(null);
   const [warningText, setWarningText] = useState('');
 
   // Payment Configuration State
-  const [paymentConfig, setPaymentConfig] = useState<DepositConfig>({ mainAddress: '', tokens: [] });
+  const [paymentConfig, setPaymentConfig] = useState<DepositConfig>({ mainAddress: '', tokens: [], blocklist: [] });
   const [newTokens, setNewTokens] = useState<TokenAddress[]>([]);
+  const [blocklistInput, setBlocklistInput] = useState('');
   const [tokenSearch, setTokenSearch] = useState('');
   const [showTokenSelector, setShowTokenSelector] = useState(false);
 
@@ -52,43 +57,49 @@ const AdminPanel: React.FC = () => {
   const [viewingReceiptUrl, setViewingReceiptUrl] = useState<string | null>(null);
 
   const refreshData = useCallback(async () => {
-    const allUsers = await db.getUsers();
-    setUsers(allUsers);
-    const allTxs = await db.getTransactions();
-    setTransactions(allTxs);
-    
-    const uids = await db.getAllChatUserIds();
-    setChatUserIds(uids);
+    try {
+      const allUsers = await db.getUsers();
+      setUsers(allUsers);
+      const allTxs = await db.getTransactions();
+      setTransactions(allTxs);
+      
+      const uids = await db.getAllChatUserIds();
+      setChatUserIds(uids);
 
-    // Fetch last messages for each chat user
-    const lastMsgs: Record<string, ChatMessage> = {};
-    for (const uid of uids) {
-      const msgs = await db.getChats(uid);
-      if (msgs.length > 0) {
-        lastMsgs[uid] = msgs[msgs.length - 1];
+      // Fetch last messages for each chat user
+      const lastMsgs: Record<string, ChatMessage> = {};
+      for (const uid of uids) {
+        const msgs = await db.getChats(uid);
+        if (msgs.length > 0) {
+          lastMsgs[uid] = msgs[msgs.length - 1];
+        }
       }
-    }
-    setLastMessages(lastMsgs);
+      setLastMessages(lastMsgs);
 
-    if (selectedChatUserId) {
-      const msgs = await db.getChats(selectedChatUserId);
-      setChatMessages(msgs);
+      if (selectedChatUserId) {
+        const msgs = await db.getChats(selectedChatUserId);
+        setChatMessages(msgs);
+      }
+      
+      const broadcast = await db.getBroadcastMessage();
+      setBroadcastInput(broadcast || '');
+      
+      const config = await db.getDepositConfig();
+      setPaymentConfig(config);
+      if (newTokens.length === 0) setNewTokens(config.tokens || []);
+      if (!blocklistInput) setBlocklistInput((config.blocklist || []).join('\n'));
+      
+      setTgSupport(config.telegramSupport || '');
+      setTgChannel(config.telegramChannel || '');
+      setMiningVideo(config.miningVideoUrl || '');
+      setBgVideo(config.backgroundVideoUrl || '');
+      setWelcomeVideo(config.welcomeVideoUrl || '');
+      setAuthVideo(config.authVideoUrl || '');
+      setWithdrawMaint(config.withdrawalMaintenance || false);
+    } catch (err) {
+      console.warn('Admin background refresh failed:', err);
     }
-    
-    const broadcast = await db.getBroadcastMessage();
-    setBroadcastInput(broadcast || '');
-    
-    const config = await db.getDepositConfig();
-    setPaymentConfig(config);
-    if (newTokens.length === 0) setNewTokens(config.tokens || []);
-    setTgSupport(config.telegramSupport || '');
-    setTgChannel(config.telegramChannel || '');
-    setMiningVideo(config.miningVideoUrl || '');
-    setBgVideo(config.backgroundVideoUrl || '');
-    setWelcomeVideo(config.welcomeVideoUrl || '');
-    setAuthVideo(config.authVideoUrl || '');
-    setWithdrawMaint(config.withdrawalMaintenance || false);
-  }, [selectedChatUserId, newTokens.length]);
+  }, [selectedChatUserId, newTokens.length, blocklistInput]);
 
   useEffect(() => {
     refreshData();
@@ -100,35 +111,57 @@ const AdminPanel: React.FC = () => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
 
+  const filteredUsers = useMemo(() => {
+    if (!userSearchTerm.trim()) return users;
+    const term = userSearchTerm.toLowerCase();
+    return users.filter(u => 
+      u.email.toLowerCase().includes(term) || 
+      u.username.toLowerCase().includes(term) ||
+      u.id.toLowerCase().includes(term)
+    );
+  }, [users, userSearchTerm]);
+
   const handleApproveTransaction = async (tx: Transaction) => {
     const targetUser = users.find(u => u.id === tx.userId);
     if (!targetUser) return;
     
-    if (tx.type === TransactionType.DEPOSIT) {
-      await db.updateProfile(targetUser.id, { walletBalance: (targetUser.walletBalance || 0) + tx.amount });
-    } else if (tx.type === TransactionType.WITHDRAWAL) {
-      if (targetUser.walletBalance < tx.amount) {
-        alert('Insufficient balance!');
-        return;
+    try {
+      if (tx.type === TransactionType.DEPOSIT) {
+        await db.updateProfile(targetUser.id, { walletBalance: (targetUser.walletBalance || 0) + tx.amount });
+      } else if (tx.type === TransactionType.WITHDRAWAL) {
+        if (targetUser.walletBalance < tx.amount) {
+          alert('Insufficient balance!');
+          return;
+        }
+        await db.updateProfile(targetUser.id, { walletBalance: (targetUser.walletBalance || 0) - tx.amount });
       }
-      await db.updateProfile(targetUser.id, { walletBalance: targetUser.walletBalance - tx.amount });
+      
+      await db.updateTransaction(tx.id, TransactionStatus.APPROVED);
+      await refreshData();
+    } catch (err) {
+      alert('Transaction approval failed. Check connection.');
     }
-    
-    await db.updateTransaction(tx.id, TransactionStatus.APPROVED);
-    await refreshData();
   };
 
   const handleRejectTransaction = async (tx: Transaction) => {
-    await db.updateTransaction(tx.id, TransactionStatus.REJECTED);
-    await refreshData();
+    try {
+      await db.updateTransaction(tx.id, TransactionStatus.REJECTED);
+      await refreshData();
+    } catch (err) {
+      alert('Action failed.');
+    }
   };
 
   const handleUpdateBalance = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingUser) return;
-    await db.updateProfile(editingUser.id, { walletBalance: parseFloat(editBalance) });
-    setEditingUser(null);
-    await refreshData();
+    try {
+      await db.updateProfile(editingUser.id, { walletBalance: parseFloat(editBalance) });
+      setEditingUser(null);
+      await refreshData();
+    } catch (err) {
+      alert('Update failed.');
+    }
   };
 
   const handleToggleBan = async (user: User) => {
@@ -138,8 +171,12 @@ const AdminPanel: React.FC = () => {
     }
     const confirmMsg = user.isBanned ? "Lift suspension for this user?" : "Suspend this user account? They will be unable to log in.";
     if (confirm(confirmMsg)) {
-      await db.updateProfile(user.id, { isBanned: !user.isBanned });
-      await refreshData();
+      try {
+        await db.updateProfile(user.id, { isBanned: !user.isBanned });
+        await refreshData();
+      } catch (err) {
+        alert('Action failed.');
+      }
     }
   };
 
@@ -148,51 +185,84 @@ const AdminPanel: React.FC = () => {
       alert("Cannot delete an administrator profile.");
       return;
     }
-    if (confirm(`Are you absolutely sure you want to delete ${user.username}? This action is permanent and deletes all their transaction history.`)) {
-      await db.deleteUser(user.id);
-      await refreshData();
+    if (confirm(`PERMANENT DELETE: Are you sure you want to completely erase ${user.username} (${user.email})? This nukes their profile and all transaction history forever.`)) {
+      try {
+        await db.deleteUser(user.id);
+        alert('User has been permanently erased from the system.');
+        await refreshData();
+      } catch (err) {
+        alert('Deletion failed. Check database connection.');
+      }
+    }
+  };
+
+  const handlePurgeByEmail = async () => {
+    if (!purgeEmail.trim()) return;
+    if (confirm(`DANGER: Are you sure you want to search and nuke any profile matching ${purgeEmail}?`)) {
+      try {
+        await db.deleteUserByEmail(purgeEmail);
+        alert(`Account associated with ${purgeEmail} has been completely erased.`);
+        setPurgeEmail('');
+        await refreshData();
+      } catch (err: any) {
+        alert(err.message || 'Purge failed.');
+      }
     }
   };
 
   const handleSendWarning = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!warningUser) return;
-    await db.updateProfile(warningUser.id, { warning: warningText || null });
-    setWarningUser(null);
-    setWarningText('');
-    alert('User status updated.');
-    await refreshData();
+    try {
+      await db.updateProfile(warningUser.id, { warning: warningText || null });
+      setWarningUser(null);
+      setWarningText('');
+      alert('User status updated.');
+      await refreshData();
+    } catch (err) {
+      alert('Action failed.');
+    }
   };
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedChatUserId || !chatInput.trim()) return;
-    const newMessage: Partial<ChatMessage> = {
-      senderId: 'admin',
-      senderName: 'Support Agent',
-      text: chatInput,
-      timestamp: new Date().toISOString(),
-      isAdmin: true
-    };
-    await db.addChatMessage(selectedChatUserId, newMessage);
-    setChatInput('');
-    await refreshData();
+    try {
+      const newMessage: Partial<ChatMessage> = {
+        senderId: 'admin',
+        senderName: 'Support Agent',
+        text: chatInput,
+        timestamp: new Date().toISOString(),
+        isAdmin: true
+      };
+      await db.addChatMessage(selectedChatUserId, newMessage);
+      setChatInput('');
+      await refreshData();
+    } catch (err) {
+      alert('Failed to send message.');
+    }
   };
 
   const savePaymentConfig = async () => {
-    await db.setDepositConfig({ 
-      ...paymentConfig, 
-      tokens: newTokens,
-      telegramSupport: tgSupport,
-      telegramChannel: tgChannel,
-      miningVideoUrl: miningVideo,
-      backgroundVideoUrl: bgVideo,
-      welcomeVideoUrl: welcomeVideo,
-      authVideoUrl: authVideo,
-      withdrawalMaintenance: withdrawMaint
-    });
-    alert('Platform configuration updated successfully!');
-    await refreshData();
+    try {
+      const blocklistArray = blocklistInput.split('\n').map(e => e.trim().toLowerCase()).filter(e => e !== '');
+      await db.setDepositConfig({ 
+        ...paymentConfig, 
+        tokens: newTokens,
+        blocklist: blocklistArray,
+        telegramSupport: tgSupport,
+        telegramChannel: tgChannel,
+        miningVideoUrl: miningVideo,
+        backgroundVideoUrl: bgVideo,
+        welcomeVideoUrl: welcomeVideo,
+        authVideoUrl: authVideo,
+        withdrawalMaintenance: withdrawMaint
+      });
+      alert('Platform configuration updated successfully!');
+      await refreshData();
+    } catch (err) {
+      alert('Save failed.');
+    }
   };
 
   const handleTokenChange = (index: number, field: 'name' | 'address', value: string) => {
@@ -216,9 +286,13 @@ const AdminPanel: React.FC = () => {
   }, [tokenSearch]);
 
   const handleUpdateBroadcast = async () => {
-    await db.setBroadcastMessage(broadcastInput);
-    alert('Broadcast updated successfully!');
-    await refreshData();
+    try {
+      await db.setBroadcastMessage(broadcastInput);
+      alert('Broadcast updated successfully!');
+      await refreshData();
+    } catch (err) {
+      alert('Broadcast update failed.');
+    }
   };
 
   const pendingDeposits = transactions.filter(t => t.type === TransactionType.DEPOSIT && t.status === TransactionStatus.PENDING);
@@ -245,48 +319,91 @@ const AdminPanel: React.FC = () => {
 
         <div className="p-4 md:p-8">
           {activeView === 'users' && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="text-[10px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-50 dark:border-gray-800">
-                    <th className="px-6 py-4">User Info</th>
-                    <th className="px-6 py-4 text-center">Status</th>
-                    <th className="px-6 py-4">Balance</th>
-                    <th className="px-6 py-4">Management Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="text-sm">
-                  {users.map(u => (
-                    <tr key={u.id} className={`border-b border-gray-50 dark:border-gray-800/50 ${u.isBanned ? 'opacity-50' : ''}`}>
-                      <td className="px-6 py-5">
-                        <div className="font-black text-gray-800 dark:text-white flex items-center gap-2">
-                          {u.username} 
-                          {u.role === UserRole.ADMIN && <span className="bg-blue-600 text-white text-[8px] px-1.5 py-0.5 rounded-full uppercase">Admin</span>}
-                        </div>
-                        <div className="text-[10px] text-gray-400">{u.email}</div>
-                        {u.warning && <div className="text-[9px] text-amber-600 font-bold uppercase mt-1">Warning: {u.warning.substring(0, 30)}...</div>}
-                      </td>
-                      <td className="px-6 py-5 text-center">
-                        <div className="flex flex-col items-center gap-1">
-                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${u.isBanned ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
-                            {u.isBanned ? 'Banned' : 'Active'}
-                          </span>
-                          <span className="text-[9px] text-gray-400 uppercase font-black">{u.activeVipId ? `VIP ${u.activeVipId}` : 'No Tier'}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-5 font-mono font-black dark:text-gray-300 text-lg">${(u.walletBalance || 0).toFixed(2)}</td>
-                      <td className="px-6 py-5">
-                        <div className="flex flex-wrap gap-3">
-                          <button onClick={() => { setEditingUser(u); setEditBalance((u.walletBalance || 0).toString()); }} className="bg-blue-50 dark:bg-blue-900/20 text-blue-600 p-2 rounded-lg hover:bg-blue-100 transition-colors" title="Adjust Balance"><i className="fa-solid fa-coins"></i></button>
-                          <button onClick={() => { setWarningUser(u); setWarningText(u.warning || ''); }} className="bg-amber-50 dark:bg-amber-900/20 text-amber-600 p-2 rounded-lg hover:bg-amber-100 transition-colors" title="Warning Message"><i className="fa-solid fa-triangle-exclamation"></i></button>
-                          <button onClick={() => handleToggleBan(u)} className={`${u.isBanned ? 'bg-green-50 dark:bg-green-900/20 text-green-600' : 'bg-red-50 dark:bg-red-900/20 text-red-600'} p-2 rounded-lg hover:opacity-80 transition-colors`} title={u.isBanned ? "Unban" : "Ban User"}><i className={`fa-solid ${u.isBanned ? 'fa-user-check' : 'fa-user-slash'}`}></i></button>
-                          <button onClick={() => handleDeleteUser(u)} className="bg-red-600 text-white p-2 rounded-lg hover:bg-red-700 transition-colors shadow-sm" title="Delete User"><i className="fa-solid fa-trash-can"></i></button>
-                        </div>
-                      </td>
+            <div className="space-y-8">
+              {/* User Search & Purge Utilities */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="relative">
+                  <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2 ml-1">Live Search</h4>
+                  <div className="relative">
+                    <i className="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                    <input 
+                      type="text" 
+                      placeholder="Find by email or username..." 
+                      className="w-full pl-12 pr-4 py-4 rounded-2xl bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 outline-none focus:ring-2 focus:ring-blue-500 text-sm dark:text-white font-medium transition-all"
+                      value={userSearchTerm}
+                      onChange={(e) => setUserSearchTerm(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="relative">
+                  <h4 className="text-[10px] font-black uppercase tracking-widest text-red-500 mb-2 ml-1">Manual Account Purge</h4>
+                  <div className="flex gap-2">
+                    <input 
+                      type="email" 
+                      placeholder="Enter exact email to nuke..." 
+                      className="flex-1 px-5 py-4 rounded-2xl bg-red-50/50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 outline-none focus:ring-2 focus:ring-red-500 text-sm dark:text-white font-mono"
+                      value={purgeEmail}
+                      onChange={(e) => setPurgeEmail(e.target.value)}
+                    />
+                    <button 
+                      onClick={handlePurgeByEmail}
+                      className="bg-red-600 hover:bg-red-700 text-white px-6 rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-red-500/20 transition-all active:scale-95"
+                    >
+                      Purge
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="text-[10px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-50 dark:border-gray-800">
+                      <th className="px-6 py-4">User Details</th>
+                      <th className="px-6 py-4 text-center">Security Status</th>
+                      <th className="px-6 py-4">Current Balance</th>
+                      <th className="px-6 py-4 text-right">Management Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="text-sm">
+                    {filteredUsers.map(u => (
+                      <tr key={u.id} className={`border-b border-gray-50 dark:border-gray-800/50 transition-colors hover:bg-gray-50/50 dark:hover:bg-gray-800/30 ${u.isBanned ? 'opacity-60 bg-red-50/10' : ''}`}>
+                        <td className="px-6 py-5">
+                          <div className="font-black text-gray-800 dark:text-white flex items-center gap-2">
+                            {u.username} 
+                            {u.role === UserRole.ADMIN && <span className="bg-blue-600 text-white text-[8px] px-1.5 py-0.5 rounded-full uppercase">Admin</span>}
+                          </div>
+                          <div className="text-[10px] text-gray-400 font-mono select-all">{u.email}</div>
+                          {u.warning && (
+                            <div className="text-[9px] text-amber-600 dark:text-amber-500 font-bold uppercase mt-1 flex items-center gap-1">
+                              <i className="fa-solid fa-circle-exclamation"></i> Warning: {u.warning.length > 40 ? u.warning.substring(0, 40) + '...' : u.warning}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-6 py-5 text-center">
+                          <div className="flex flex-col items-center gap-1">
+                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${u.isBanned ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'}`}>
+                              {u.isBanned ? 'Suspended' : 'Active Access'}
+                            </span>
+                            <span className="text-[9px] text-gray-400 uppercase font-black">{u.activeVipId ? `VIP ${u.activeVipId} License` : 'Unlicensed'}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-5 font-mono font-black dark:text-gray-300 text-lg">${(u.walletBalance || 0).toFixed(2)}</td>
+                        <td className="px-6 py-5">
+                          <div className="flex justify-end gap-2">
+                            <button onClick={() => { setEditingUser(u); setEditBalance((u.walletBalance || 0).toString()); }} className="bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 w-10 h-10 rounded-xl hover:bg-blue-100 transition-all flex items-center justify-center" title="Edit Wallet Balance"><i className="fa-solid fa-coins"></i></button>
+                            <button onClick={() => { setWarningUser(u); setWarningText(u.warning || ''); }} className="bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 w-10 h-10 rounded-xl hover:bg-amber-100 transition-all flex items-center justify-center" title="Warn User"><i className="fa-solid fa-triangle-exclamation"></i></button>
+                            <button onClick={() => handleToggleBan(u)} className={`${u.isBanned ? 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400' : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'} w-10 h-10 rounded-xl hover:opacity-80 transition-all flex items-center justify-center`} title={u.isBanned ? "Lift Suspension" : "Suspend Access"}><i className={`fa-solid ${u.isBanned ? 'fa-user-check' : 'fa-user-slash'}`}></i></button>
+                            <button onClick={() => handleDeleteUser(u)} className="bg-red-600 text-white w-10 h-10 rounded-xl hover:bg-red-700 transition-all shadow-md flex items-center justify-center" title="Nuke Profile Forever"><i className="fa-solid fa-trash-can"></i></button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                    {filteredUsers.length === 0 && <tr><td colSpan={4} className="px-6 py-20 text-center text-gray-400 italic">No user accounts found matching your query.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
@@ -345,6 +462,18 @@ const AdminPanel: React.FC = () => {
               <div className="bg-blue-50 dark:bg-blue-900/10 p-8 rounded-[2.5rem] border border-blue-100 dark:border-blue-900/30">
                 <h4 className="text-sm font-black text-blue-700 uppercase tracking-widest mb-6 flex items-center gap-2"><i className="fa-solid fa-gear text-blue-600"></i> Global Configuration</h4>
                 
+                {/* User Blocklist Utility */}
+                <div className="bg-white dark:bg-gray-800/40 p-6 rounded-3xl border border-red-100 dark:border-red-900/30 mb-10 shadow-sm">
+                   <h5 className="text-[10px] font-black uppercase text-red-600 mb-4 tracking-widest border-b border-red-100 pb-2">System User Blocklist</h5>
+                   <p className="text-[11px] text-gray-500 mb-4">Enter one email per line. These addresses will be permanently forbidden from registering on the platform.</p>
+                   <textarea 
+                    className="w-full px-4 py-3 rounded-xl bg-gray-50 dark:bg-gray-900 border border-red-50 dark:border-red-900/50 text-xs font-mono dark:text-white outline-none focus:ring-2 focus:ring-red-500 min-h-[100px]"
+                    placeholder="example@gmail.com&#10;test@gmail.com"
+                    value={blocklistInput}
+                    onChange={(e) => setBlocklistInput(e.target.value)}
+                   />
+                </div>
+
                 <div className="bg-white dark:bg-gray-800/40 p-6 rounded-3xl border border-blue-100 dark:border-blue-800/50 mb-10">
                   <h5 className="text-[10px] font-black uppercase text-gray-400 mb-6 tracking-widest border-b pb-2">Platform Controls</h5>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -491,7 +620,7 @@ const AdminPanel: React.FC = () => {
                       <div key={idx} className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end bg-white dark:bg-gray-800 p-6 rounded-3xl border border-gray-100 dark:border-gray-700 shadow-sm relative group">
                         <div className="md:col-span-3">
                           <label className="block text-[10px] font-black uppercase text-gray-400 mb-1 tracking-widest">Token Name</label>
-                          <div className="px-4 py-2 rounded-xl bg-gray-50 dark:bg-gray-900 text-xs font-black text-blue-600 dark:text-blue-400 border border-gray-100 dark:border-gray-800 uppercase">
+                          <div className="px-4 py-2 rounded-xl bg-gray-50 dark:bg-gray-950 text-xs font-black text-blue-600 dark:text-blue-400 border border-gray-100 dark:border-gray-800 uppercase">
                             {token.name}
                           </div>
                         </div>
@@ -499,7 +628,7 @@ const AdminPanel: React.FC = () => {
                           <label className="block text-[10px] font-black uppercase text-gray-400 mb-1 tracking-widest">Company Wallet Address</label>
                           <input 
                             type="text" 
-                            className="w-full px-4 py-2 rounded-xl border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-[10px] font-mono dark:text-white outline-none focus:ring-2 focus:ring-blue-500" 
+                            className="w-full px-4 py-2 rounded-xl border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-950 text-[10px] font-mono dark:text-white outline-none focus:ring-2 focus:ring-blue-500" 
                             value={token.address} 
                             onChange={(e) => handleTokenChange(idx, 'address', e.target.value)} 
                             placeholder={`Enter ${token.name} Address`} 

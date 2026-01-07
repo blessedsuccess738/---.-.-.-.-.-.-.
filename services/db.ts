@@ -42,7 +42,6 @@ const mapTransaction = (t: any): Transaction => ({
   status: t.status,
   date: t.date,
   method: t.method,
-  // Fix: mapping database 'receipt_url' to interface property 'receiptUrl'
   receiptUrl: t.receipt_url,
   description: t.description
 });
@@ -50,35 +49,78 @@ const mapTransaction = (t: any): Transaction => ({
 export const db = {
   // Auth
   getCurrentUser: async (): Promise<User | null> => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
-    
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', user.id)
-      .single();
-    
-    return mapProfile(profile);
+    try {
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) return null;
+      
+      const { data: profile, error: profError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+      
+      if (profError) return null;
+      return mapProfile(profile);
+    } catch (e) {
+      console.error('db.getCurrentUser failed:', e);
+      return null;
+    }
   },
 
   // Users
   getUsers: async (): Promise<User[]> => {
-    const { data } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
-    return (data || []).map(p => mapProfile(p)).filter((u): u is User => u !== null);
+    try {
+      const { data, error } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data || []).map(p => mapProfile(p)).filter((u): u is User => u !== null);
+    } catch (e) {
+      console.error('db.getUsers failed:', e);
+      return [];
+    }
   },
 
   updateProfile: async (userId: string, updates: Partial<User>) => {
-    const dbUpdates = mapProfileToDB(updates);
-    await supabase.from('profiles').update(dbUpdates).eq('id', userId);
+    try {
+      const dbUpdates = mapProfileToDB(updates);
+      const { error } = await supabase.from('profiles').update(dbUpdates).eq('id', userId);
+      if (error) throw error;
+    } catch (e) {
+      console.error('db.updateProfile failed:', e);
+    }
   },
 
   deleteUser: async (userId: string) => {
-    // Note: This only deletes the profile. Auth user deletion requires Admin API which isn't available in client SDK usually.
-    // However, we can delete their profile data.
-    await supabase.from('transactions').delete().eq('user_id', userId);
-    await supabase.from('chats').delete().eq('user_id', userId);
-    return await supabase.from('profiles').delete().eq('id', userId);
+    try {
+      // Delete all related data first
+      await supabase.from('transactions').delete().eq('user_id', userId);
+      await supabase.from('chats').delete().eq('user_id', userId);
+      // Finally delete the profile
+      const { error } = await supabase.from('profiles').delete().eq('id', userId);
+      if (error) throw error;
+      console.log(`User ${userId} and all associated data permanently removed from DB.`);
+    } catch (e) {
+      console.error('db.deleteUser failed:', e);
+      throw e;
+    }
+  },
+
+  deleteUserByEmail: async (email: string) => {
+    try {
+      const { data: profile, error: findError } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('email', email.toLowerCase().trim())
+        .single();
+
+      if (findError || !profile) {
+        throw new Error('User not found in system.');
+      }
+
+      await db.deleteUser(profile.id);
+    } catch (e) {
+      console.error('db.deleteUserByEmail failed:', e);
+      throw e;
+    }
   },
 
   // To satisfy sync-style usage in legacy code
@@ -90,16 +132,42 @@ export const db = {
 
   // Transactions
   getTransactions: async (userId?: string): Promise<Transaction[]> => {
-    let query = supabase.from('transactions').select('*').order('date', { ascending: false });
-    if (userId) query = query.eq('user_id', userId);
-    const { data } = await query;
-    return (data || []).map(t => mapTransaction(t));
+    try {
+      let query = supabase.from('transactions').select('*').order('date', { ascending: false });
+      if (userId) query = query.eq('user_id', userId);
+      const { data, error } = await query;
+      if (error) throw error;
+      return (data || []).map(t => mapTransaction(t));
+    } catch (e) {
+      console.error('db.getTransactions failed:', e);
+      return [];
+    }
   },
 
   setTransactions: async (txs: Transaction[]) => {
     for (const tx of txs) {
+      try {
+        const dbTx = {
+          id: tx.id,
+          user_id: tx.userId,
+          amount: tx.amount,
+          type: tx.type,
+          status: tx.status,
+          date: tx.date,
+          method: tx.method,
+          receipt_url: tx.receiptUrl,
+          description: tx.description
+        };
+        await supabase.from('transactions').upsert(dbTx);
+      } catch (e) {
+        console.error('db.setTransactions item failed:', e);
+      }
+    }
+  },
+
+  createTransaction: async (tx: Partial<Transaction>) => {
+    try {
       const dbTx = {
-        id: tx.id,
         user_id: tx.userId,
         amount: tx.amount,
         type: tx.type,
@@ -109,36 +177,42 @@ export const db = {
         receipt_url: tx.receiptUrl,
         description: tx.description
       };
-      await supabase.from('transactions').upsert(dbTx);
+      const { error } = await supabase.from('transactions').insert(dbTx);
+      if (error) throw error;
+    } catch (e) {
+      console.error('db.createTransaction failed:', e);
+      throw e;
     }
   },
 
-  createTransaction: async (tx: Partial<Transaction>) => {
-    const dbTx = {
-      user_id: tx.userId,
-      amount: tx.amount,
-      type: tx.type,
-      status: tx.status,
-      date: tx.date,
-      method: tx.method,
-      receipt_url: tx.receiptUrl,
-      description: tx.description
-    };
-    return await supabase.from('transactions').insert(dbTx);
-  },
-
   updateTransaction: async (txId: string, status: string) => {
-    return await supabase.from('transactions').update({ status }).eq('id', txId);
+    try {
+      const { error } = await supabase.from('transactions').update({ status }).eq('id', txId);
+      if (error) throw error;
+    } catch (e) {
+      console.error('db.updateTransaction failed:', e);
+    }
   },
 
   // System Config
   getSystemConfig: async () => {
-    const { data } = await supabase.from('system_config').select('*').eq('id', 'global').single();
-    return data || null;
+    try {
+      const { data, error } = await supabase.from('system_config').select('*').eq('id', 'global').single();
+      if (error) return null;
+      return data || null;
+    } catch (e) {
+      console.error('db.getSystemConfig failed:', e);
+      return null;
+    }
   },
 
   updateSystemConfig: async (updates: any) => {
-    return await supabase.from('system_config').update(updates).eq('id', 'global');
+    try {
+      const { error } = await supabase.from('system_config').update(updates).eq('id', 'global');
+      if (error) throw error;
+    } catch (e) {
+      console.error('db.updateSystemConfig failed:', e);
+    }
   },
 
   // Broadcast & Deposit Config Helpers
@@ -162,33 +236,50 @@ export const db = {
 
   // Chats
   getChats: async (userId: string): Promise<ChatMessage[]> => {
-    const { data } = await supabase.from('chats').select('*').eq('user_id', userId).order('timestamp', { ascending: true });
-    return (data || []).map(m => ({
-      id: m.id,
-      senderId: m.sender_id,
-      senderName: m.sender_name,
-      text: m.text,
-      timestamp: m.timestamp,
-      is_admin: m.is_admin
-    }));
+    try {
+      const { data, error } = await supabase.from('chats').select('*').eq('user_id', userId).order('timestamp', { ascending: true });
+      if (error) throw error;
+      return (data || []).map(m => ({
+        id: m.id,
+        senderId: m.sender_id,
+        senderName: m.sender_name,
+        text: m.text,
+        timestamp: m.timestamp,
+        is_admin: m.is_admin
+      }));
+    } catch (e) {
+      console.error('db.getChats failed:', e);
+      return [];
+    }
   },
 
   getAllChatUserIds: async (): Promise<string[]> => {
-    const { data } = await supabase.from('chats').select('user_id');
-    const uniqueIds = Array.from(new Set((data || []).map((d: any) => d.user_id as string))) as string[];
-    return uniqueIds;
+    try {
+      const { data, error } = await supabase.from('chats').select('user_id');
+      if (error) throw error;
+      const uniqueIds = Array.from(new Set((data || []).map((d: any) => d.user_id as string))) as string[];
+      return uniqueIds;
+    } catch (e) {
+      console.error('db.getAllChatUserIds failed:', e);
+      return [];
+    }
   },
 
   addChatMessage: async (userId: string, msg: Partial<ChatMessage>) => {
-    const dbMsg = {
-      user_id: userId,
-      sender_id: msg.senderId,
-      sender_name: msg.senderName,
-      text: msg.text,
-      timestamp: msg.timestamp,
-      is_admin: msg.isAdmin
-    };
-    return await supabase.from('chats').insert(dbMsg);
+    try {
+      const dbMsg = {
+        user_id: userId,
+        sender_id: msg.senderId,
+        sender_name: msg.senderName,
+        text: msg.text,
+        timestamp: msg.timestamp,
+        is_admin: msg.isAdmin
+      };
+      const { error } = await supabase.from('chats').insert(dbMsg);
+      if (error) throw error;
+    } catch (e) {
+      console.error('db.addChatMessage failed:', e);
+    }
   },
 
   setCurrentUser: (user: User | null) => {

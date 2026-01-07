@@ -18,11 +18,16 @@ const Login: React.FC = () => {
     setLoading(true);
     setError('');
 
-    // Pre-check for placeholder key
-    if ((supabase as any).supabaseKey.includes('REPLACE_THIS_WITH_YOUR_ANON_KEY')) {
-      setError('Setup Required: Please paste your Supabase "anon" key into services/supabase.ts');
-      setLoading(false);
-      return;
+    // Pre-check for placeholder key safely
+    try {
+      const isPlaceholder = (supabase as any)?.supabaseKey?.includes?.('REPLACE_THIS_WITH_YOUR_ANON_KEY') ?? false;
+      if (isPlaceholder) {
+        setError('Setup Required: Please paste your Supabase "anon" key into services/supabase.ts');
+        setLoading(false);
+        return;
+      }
+    } catch (checkErr) {
+      console.warn('Config check failed:', checkErr);
     }
 
     try {
@@ -61,8 +66,12 @@ const Login: React.FC = () => {
       }
 
       navigate('/dashboard');
-    } catch (err) {
-      setError('Connection error. Please check your network and Supabase settings.');
+    } catch (err: any) {
+      if (err.message === 'Failed to fetch') {
+        setError('Connection failed. Our servers or your network might be unavailable. Please try again in a moment.');
+      } else {
+        setError('An unexpected error occurred during login. Please try again.');
+      }
       setLoading(false);
     }
   };

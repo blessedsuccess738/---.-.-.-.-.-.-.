@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../services/supabase';
+import { db } from '../services/db';
 import { ADMIN_CONFIG } from '../constants';
 
 const Signup: React.FC = () => {
@@ -16,10 +17,20 @@ const Signup: React.FC = () => {
     setLoading(true);
     setError('');
 
+    const targetEmail = formData.email.toLowerCase().trim();
+
     try {
-      // We provide a redirectTo that points to our verification landing page
+      // 1. Check blocklist first
+      const config = await db.getDepositConfig();
+      if (config.blocklist && config.blocklist.includes(targetEmail)) {
+        setError('This email address has been restricted from creating an account.');
+        setLoading(false);
+        return;
+      }
+
+      // 2. Perform Supabase Signup
       const { data, error: authError } = await supabase.auth.signUp({
-        email: formData.email.toLowerCase().trim(),
+        email: targetEmail,
         password: formData.password,
         options: {
           emailRedirectTo: `${window.location.origin}/#/verify-email`,
@@ -36,12 +47,12 @@ const Signup: React.FC = () => {
       }
 
       if (data.user) {
-        const isAdmin = formData.email.toLowerCase().trim() === ADMIN_CONFIG.EMAIL.toLowerCase().trim();
+        const isAdmin = targetEmail === ADMIN_CONFIG.EMAIL.toLowerCase().trim();
         
         const { error: profileError } = await supabase.from('profiles').insert({
           id: data.user.id,
           username: formData.username,
-          email: formData.email.toLowerCase().trim(),
+          email: targetEmail,
           wallet_balance: 0,
           role: isAdmin ? 'ADMIN' : 'USER'
         });
@@ -52,8 +63,6 @@ const Signup: React.FC = () => {
           return;
         }
 
-        // If email confirmation is enabled in Supabase, the user isn't fully "active" yet.
-        // We show the "check your email" screen.
         setSent(true);
       }
     } catch (err: any) {

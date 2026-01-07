@@ -74,6 +74,7 @@ export interface DepositConfig {
   welcomeVideoUrl?: string;
   authVideoUrl?: string;
   withdrawalMaintenance?: boolean;
+  blocklist?: string[];
 }
 
 export interface AppStats {
